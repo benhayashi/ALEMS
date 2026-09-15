@@ -62,6 +62,12 @@ function switchTab(tabId) {
     if (typeof initCharts === 'function') {
       try {
         initCharts();
+        if (typeof fetchAndRenderAnalytics === 'function') {
+          fetchAndRenderAnalytics();
+        }
+        setTimeout(() => {
+          if (typeof resizeCharts === 'function') resizeCharts();
+        }, 150);
       } catch (err) {
         console.warn("Analytics charts init:", err);
       }

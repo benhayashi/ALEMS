@@ -21,7 +21,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   
   <!-- Custom CSS with cache busting -->
-  <link rel="stylesheet" href="/static/css/style.css?v=2.5">
+  <link rel="stylesheet" href="/static/css/style.css?v=2.6">
 </head>
 <body>
 
@@ -207,6 +207,26 @@
 
     <!-- TAB 3: Lead Risk Analytics -->
     <div class="tab-pane" id="tab-analytics">
+      <div class="table-toolbar" style="margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
+        <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+          <span style="font-size: 0.82rem; font-weight: 600; color: #cbd5e1;">Time Window:</span>
+          <div class="btn-group" id="analytics-time-group" style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
+            <button class="btn btn-secondary btn-sm active-range" id="btn-range-24h" onclick="changeAnalyticsTimeRange('24h')">Today (24 Hours)</button>
+            <button class="btn btn-secondary btn-sm" id="btn-range-7d" onclick="changeAnalyticsTimeRange('7d')">Past 7 Days</button>
+            <button class="btn btn-secondary btn-sm" id="btn-range-30d" onclick="changeAnalyticsTimeRange('30d')">Past 30 Days</button>
+            <button class="btn btn-secondary btn-sm" id="btn-range-all" onclick="changeAnalyticsTimeRange('all')">All Time (Cumulative)</button>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; align-items: center; margin-left: auto;">
+          <span id="analytics-range-indicator" style="font-size: 0.75rem; color: #94a3b8;">Showing: Today (24h)</span>
+          <button class="btn btn-secondary btn-sm" onclick="fetchAndRenderAnalytics()" title="Refresh analytics metrics">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+
       <div class="analytics-stat-grid">
         <div class="stat-card">
           <div class="stat-title">Total Monitored Passes</div>
@@ -464,9 +484,9 @@
   </main>
 
   <!-- JavaScript Modules with cache-busting -->
-  <script src="/static/js/map.js?v=2.5"></script>
-  <script src="/static/js/charts.js?v=2.5"></script>
-  <script src="/static/js/export.js?v=2.5"></script>
-  <script src="/static/js/app.js?v=2.5"></script>
+  <script src="/static/js/map.js?v=2.6"></script>
+  <script src="/static/js/charts.js?v=2.6"></script>
+  <script src="/static/js/export.js?v=2.6"></script>
+  <script src="/static/js/app.js?v=2.6"></script>
 </body>
 </html>

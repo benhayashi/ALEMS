@@ -5,7 +5,7 @@ Stores immutable flyover events, high-frequency track records, and weather obser
 import sqlite3
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from alems.config import config
@@ -214,35 +214,115 @@ class Database:
             cursor.execute("SELECT * FROM track_points WHERE event_id = ? ORDER BY timestamp_utc ASC", (event_id,))
             return [dict(row) for row in cursor.fetchall()]
 
-    def get_statistics(self) -> Dict[str, Any]:
-        """Aggregate statistical summary for the dashboard."""
+    def get_statistics(self, time_range: str = "all") -> Dict[str, Any]:
+        """Aggregate statistical summary, timeline trend, and fleet breakdown.
+        Supports time_range: '24h', '7d', '30d', 'all'
+        """
+        now = datetime.now(timezone.utc)
+        cutoff_iso = None
+        if time_range == "24h":
+            cutoff_iso = (now - timedelta(hours=24)).isoformat()
+        elif time_range == "7d":
+            cutoff_iso = (now - timedelta(days=7)).isoformat()
+        elif time_range == "30d":
+            cutoff_iso = (now - timedelta(days=30)).isoformat()
+
+        where_clause = ""
+        params = []
+        if cutoff_iso:
+            where_clause = " WHERE start_time_utc >= ?"
+            params = [cutoff_iso]
+
         with self._get_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT COUNT(*) FROM flyover_events")
+            c.execute(f"SELECT COUNT(*) FROM flyover_events{where_clause}", params)
             total_events = c.fetchone()[0]
 
-            c.execute("SELECT COUNT(*) FROM flyover_events WHERE is_leaded = 1")
+            leaded_where = f" WHERE is_leaded = 1{' AND start_time_utc >= ?' if cutoff_iso else ''}"
+            c.execute(f"SELECT COUNT(*) FROM flyover_events{leaded_where}", params)
             total_leaded = c.fetchone()[0]
 
-            c.execute("SELECT COUNT(*) FROM flyover_events WHERE is_leaded = 1 AND is_downwind = 1")
+            downwind_where = f" WHERE is_leaded = 1 AND is_downwind = 1{' AND start_time_utc >= ?' if cutoff_iso else ''}"
+            c.execute(f"SELECT COUNT(*) FROM flyover_events{downwind_where}", params)
             total_downwind_leaded = c.fetchone()[0]
 
-            c.execute("SELECT AVG(min_slant_range_ft), MIN(min_slant_range_ft) FROM flyover_events WHERE is_leaded = 1")
+            c.execute(f"SELECT AVG(min_slant_range_ft), MIN(min_slant_range_ft) FROM flyover_events{leaded_where}", params)
             avg_slant, min_slant = c.fetchone()
 
-            c.execute("SELECT MAX(max_exposure_score), AVG(max_exposure_score) FROM flyover_events WHERE is_leaded = 1")
+            c.execute(f"SELECT MAX(max_exposure_score), AVG(max_exposure_score) FROM flyover_events{leaded_where}", params)
             max_risk, avg_risk = c.fetchone()
 
-            c.execute("""
+            c.execute(f"""
             SELECT aircraft_type, COUNT(*) as cnt 
             FROM flyover_events 
-            WHERE is_leaded = 1 
+            {leaded_where}
             GROUP BY aircraft_type 
             ORDER BY cnt DESC LIMIT 5
-            """)
+            """, params)
             top_types = [dict(row) for row in c.fetchall()]
 
+            # Fleet distribution
+            c.execute(f"""
+            SELECT fuel_type, COUNT(*) as cnt
+            FROM flyover_events
+            {where_clause}
+            GROUP BY fuel_type
+            ORDER BY cnt DESC
+            """, params)
+            fleet_rows = c.fetchall()
+            fleet_labels = [row["fuel_type"] or "Unknown" for row in fleet_rows]
+            fleet_counts = [row["cnt"] for row in fleet_rows]
+
+            # Timeline aggregation for exposure chart
+            timeline_labels = []
+            timeline_leaded = []
+            timeline_risk = []
+
+            if time_range == "24h":
+                for i in range(12, -1, -1):
+                    t_bucket = now - timedelta(hours=i * 2)
+                    timeline_labels.append(t_bucket.strftime("%H:00"))
+                    b_start = (t_bucket - timedelta(hours=2)).isoformat()
+                    b_end = t_bucket.isoformat()
+                    c.execute("""
+                    SELECT COUNT(*), MAX(max_exposure_score)
+                    FROM flyover_events
+                    WHERE is_leaded = 1 AND start_time_utc >= ? AND start_time_utc < ?
+                    """, (b_start, b_end))
+                    cnt, peak = c.fetchone()
+                    timeline_leaded.append(cnt or 0)
+                    timeline_risk.append(round(peak or 0.0, 1))
+            elif time_range == "7d":
+                for i in range(6, -1, -1):
+                    day = now - timedelta(days=i)
+                    timeline_labels.append(day.strftime("%a %b %d"))
+                    d_start = day.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+                    d_end = day.replace(hour=23, minute=59, second=59, microsecond=999999).isoformat()
+                    c.execute("""
+                    SELECT COUNT(*), MAX(max_exposure_score)
+                    FROM flyover_events
+                    WHERE is_leaded = 1 AND start_time_utc >= ? AND start_time_utc <= ?
+                    """, (d_start, d_end))
+                    cnt, peak = c.fetchone()
+                    timeline_leaded.append(cnt or 0)
+                    timeline_risk.append(round(peak or 0.0, 1))
+            else: # 30d or all
+                for i in range(14, -1, -1):
+                    day = now - timedelta(days=i * 2)
+                    timeline_labels.append(day.strftime("%b %d"))
+                    d_start = (day - timedelta(days=2)).isoformat()
+                    d_end = day.isoformat()
+                    c.execute("""
+                    SELECT COUNT(*), MAX(max_exposure_score)
+                    FROM flyover_events
+                    WHERE is_leaded = 1 AND start_time_utc >= ? AND start_time_utc <= ?
+                    """, (d_start, d_end))
+                    cnt, peak = c.fetchone()
+                    timeline_leaded.append(cnt or 0)
+                    timeline_risk.append(round(peak or 0.0, 1))
+
             return {
+                "time_range": time_range,
                 "total_events": total_events or 0,
                 "total_leaded_events": total_leaded or 0,
                 "total_downwind_leaded": total_downwind_leaded or 0,
@@ -250,7 +330,16 @@ class Database:
                 "min_slant_range_ft": round(min_slant or 0.0, 1),
                 "max_risk_score": round(max_risk or 0.0, 1),
                 "avg_risk_score": round(avg_risk or 0.0, 1),
-                "top_leaded_aircraft": top_types
+                "top_leaded_aircraft": top_types,
+                "fleet_breakdown": {
+                    "labels": fleet_labels,
+                    "counts": fleet_counts
+                },
+                "timeline": {
+                    "labels": timeline_labels,
+                    "leaded_counts": timeline_leaded,
+                    "risk_scores": timeline_risk
+                }
             }
 
     def clear_all_events(self) -> int:

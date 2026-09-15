@@ -339,8 +339,8 @@ def get_event_trajectory(event_id: str):
     return {"event_id": event_id, "points": points, "count": len(points)}
 
 @app.get("/api/statistics")
-def get_statistics():
-    return db.get_statistics()
+def get_statistics(time_range: str = Query("all")):
+    return db.get_statistics(time_range=time_range)
 
 @app.get("/api/export/csv")
 def download_events_csv(leaded_only: bool = Query(False)):

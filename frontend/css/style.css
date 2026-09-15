@@ -432,6 +432,13 @@ main {
   background-color: #475569;
 }
 
+.btn.active-range {
+  background-color: #2563eb !important;
+  color: #ffffff !important;
+  border-color: #3b82f6 !important;
+  font-weight: 600;
+}
+
 .table-container {
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
