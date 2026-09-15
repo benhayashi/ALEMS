@@ -29,33 +29,75 @@ class GeocodingService:
                 print(f"Warning: Failed to load local airports database: {e}")
 
     def geocode_address(self, address: str) -> Optional[Dict[str, Any]]:
-        """Geocode an address to latitude and longitude using OpenStreetMap Nominatim.
+        """Geocode an address to latitude and longitude using:
+        1. US Census Bureau Geocoder (100% free, official US gov API, highly accurate for US addresses)
+        2. OpenStreetMap Nominatim with intelligent query relaxation.
         Zero API key required.
         """
         if not address or not address.strip():
             return None
 
         clean_addr = address.strip()
-        encoded = urllib.parse.quote(clean_addr)
-        url = f"https://nominatim.openstreetmap.org/search?q={encoded}&format=json&limit=1"
 
+        # Tier 1: US Census Bureau Geocoder (Best for US street addresses)
         try:
-            resp = self.session.get(url, timeout=5.0)
+            census_url = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
+            params = {
+                "address": clean_addr,
+                "benchmark": "Public_AR_Current",
+                "format": "json"
+            }
+            resp = self.session.get(census_url, params=params, timeout=5.0)
             if resp.status_code == 200:
                 data = resp.json()
-                if isinstance(data, list) and len(data) > 0:
-                    first = data[0]
-                    lat = float(first["lat"])
-                    lon = float(first["lon"])
-                    display_name = first.get("display_name", clean_addr)
+                matches = data.get("result", {}).get("addressMatches", [])
+                if matches:
+                    first = matches[0]
+                    coords = first.get("coordinates", {})
+                    lat = float(coords.get("y"))
+                    lon = float(coords.get("x"))
+                    matched = first.get("matchedAddress", clean_addr)
                     return {
-                        "address": display_name,
+                        "address": matched,
                         "lat": round(lat, 6),
                         "lon": round(lon, 6),
-                        "source": "OpenStreetMap Nominatim"
+                        "source": "US Census Bureau Geocoder"
                     }
         except Exception as e:
-            print(f"Geocoding error for '{address}': {e}")
+            print(f"US Census geocoding attempt failed: {e}")
+
+        # Tier 2: OpenStreetMap Nominatim with query relaxation
+        queries_to_try = [
+            clean_addr,
+            # If address has comma, try without middle elements or just street + zip
+        ]
+        parts = [p.strip() for p in clean_addr.split(",") if p.strip()]
+        if len(parts) >= 3:
+            # e.g. "44081 Beaver Creek Dr, MD 20619"
+            queries_to_try.append(f"{parts[0]}, {parts[-1]}")
+            # e.g. "44081 Beaver Creek Dr"
+            queries_to_try.append(parts[0])
+
+        for q in queries_to_try:
+            try:
+                encoded = urllib.parse.quote(q)
+                url = f"https://nominatim.openstreetmap.org/search?q={encoded}&format=json&limit=1"
+                resp = self.session.get(url, timeout=4.0)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if isinstance(data, list) and len(data) > 0:
+                        first = data[0]
+                        lat = float(first["lat"])
+                        lon = float(first["lon"])
+                        display_name = first.get("display_name", clean_addr)
+                        return {
+                            "address": display_name,
+                            "lat": round(lat, 6),
+                            "lon": round(lon, 6),
+                            "source": "OpenStreetMap Nominatim"
+                        }
+            except Exception as e:
+                print(f"Nominatim attempt '{q}' failed: {e}")
 
         return None
 

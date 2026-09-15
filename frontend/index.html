@@ -21,7 +21,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   
   <!-- Custom CSS with cache busting -->
-  <link rel="stylesheet" href="/static/css/style.css?v=2.3">
+  <link rel="stylesheet" href="/static/css/style.css?v=2.5">
 </head>
 <body>
 
@@ -42,10 +42,11 @@
       <div class="badge badge-cyan" id="header-airport" onclick="switchTab('tab-settings')" style="cursor: pointer;" title="Click to configure airfield">
         ✈️ 2W6: 3.7 NM (Rwy 11/29)
       </div>
-      <div class="badge" id="header-version" style="background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.4); color: #93c5fd; font-weight: 700;">
-        v2.3
+      <div class="badge" id="header-adsb" onclick="switchTab('tab-settings')" style="cursor: pointer; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3); color: #6ee7b7;" title="Click to configure ADS-B receiver">
+        <span class="pulse-dot" id="adsb-status-dot" style="background-color: #10b981; box-shadow: 0 0 8px #10b981;"></span>
+        <span id="adsb-status-text">ADS-B: CONNECTED (0)</span>
       </div>
-      <div class="badge badge-green">
+      <div class="badge badge-green" title="ALEMS WebSocket & System Status">
         <span class="pulse-dot" id="ws-status-dot"></span>
         <span id="ws-status-text">ONLINE</span>
       </div>
@@ -78,6 +79,19 @@
     <!-- TAB 1: Radar & Map -->
     <div class="tab-pane active" id="tab-radar">
       <div id="map-container">
+        <!-- Floating Prompt Banner for Pin Drop Mode -->
+        <div class="pin-drop-banner" id="pin-drop-banner">
+          <span>📍 Tap anywhere on map to set house location</span>
+          <button class="btn btn-secondary btn-sm" onclick="togglePinDropMode(false)">Cancel</button>
+        </div>
+
+        <!-- Floating Map Quick Actions -->
+        <div class="map-floating-controls">
+          <button class="btn btn-secondary btn-sm btn-pin-drop" onclick="togglePinDropMode()" title="Drop Pin to set property location">
+            📍 Set Pin
+          </button>
+        </div>
+
         <div id="map"></div>
       </div>
 
@@ -110,18 +124,31 @@
         </div>
 
         <!-- Active Aircraft in Geofence Card -->
-        <div class="card" style="flex: 1; overflow-y: auto;">
-          <div class="card-header">
+        <div class="card" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column;">
+          <div class="card-header" style="flex-wrap: wrap; gap: 0.5rem;">
             <span class="card-title">
               <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>
-              Aircraft In Range (<span id="sidebar-aircraft-count">0</span>)
+              Aircraft (<span id="sidebar-aircraft-count">0</span>)
             </span>
-            <span style="font-size: 0.7rem; color: #94a3b8;">Max 3.5 NM</span>
+            <div style="display: flex; gap: 0.25rem;">
+              <select id="radar-scope-select" class="form-input" style="padding: 2px 6px; font-size: 0.72rem; width: auto;" onchange="onRadarScopeChange()">
+                <option value="all">All Regional Traffic</option>
+                <option value="geofence">Geofence Only (3.5 NM)</option>
+              </select>
+            </div>
           </div>
 
-          <div id="sidebar-aircraft-list">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.75rem; border-bottom: 1px solid var(--border-color); font-size: 0.72rem; background: rgba(0,0,0,0.15);">
+            <label style="display: flex; align-items: center; gap: 0.3rem; cursor: pointer;">
+              <input type="checkbox" id="radar-filter-leaded" onchange="renderFilteredAircraft()">
+              <span>100LL Leaded Only</span>
+            </label>
+            <span id="radar-geofence-summary" style="color: #94a3b8;">0 within 3.5 NM</span>
+          </div>
+
+          <div id="sidebar-aircraft-list" style="flex: 1; overflow-y: auto;">
             <div style="text-align: center; color: #64748b; padding: 2rem 1rem; font-size: 0.85rem;">
-              Listening for ADS-B signals from readsb...
+              Connecting to live ADS-B receiver...
             </div>
           </div>
         </div>
@@ -133,7 +160,7 @@
       <div class="table-toolbar">
         <div class="filter-group">
           <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; font-weight: 600; cursor: pointer;">
-            <input type="checkbox" id="filter-leaded-only" checked>
+            <input type="checkbox" id="filter-leaded-only" checked onchange="refreshEvents()">
             100LL Piston Aircraft Only
           </label>
         </div>
@@ -142,6 +169,10 @@
           <button class="btn btn-secondary" onclick="refreshEvents()">
             <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
             Refresh
+          </button>
+          <button class="btn btn-secondary" style="color: #fca5a5; border-color: rgba(239, 68, 68, 0.4);" onclick="clearAllLogs()" title="Purge all logged flyovers">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Clear Logs
           </button>
           <button class="btn btn-primary" onclick="downloadAuditCsv(document.getElementById('filter-leaded-only').checked)">
             <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -245,7 +276,8 @@
             <input type="text" class="form-input" id="setting-home-address" placeholder="44081 Beaver Creek Dr, California, MD 20619">
             <button class="btn btn-secondary" id="geocode-addr-btn" style="white-space: nowrap;">Find & Geocode</button>
           </div>
-          <div class="form-hint">Uses free OpenStreetMap Nominatim service to resolve exact coordinates.</div>
+          <div class="form-hint">Uses US Census Bureau official geocoder & OpenStreetMap to resolve exact coordinates.</div>
+          <div id="geocode-status-msg" style="font-size: 0.8rem; margin-top: 0.4rem; display: none; padding: 0.4rem 0.6rem; border-radius: 4px;"></div>
         </div>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem;">
@@ -280,6 +312,7 @@
             <button class="btn btn-secondary" id="lookup-airport-btn" style="white-space: nowrap;">Lookup Airport</button>
           </div>
           <div class="form-hint">Lookup automatically fetches airport coordinates, elevation, and runway vectors.</div>
+          <div id="airport-status-msg" style="font-size: 0.8rem; margin-top: 0.4rem; display: none; padding: 0.4rem 0.6rem; border-radius: 4px;"></div>
         </div>
 
         <div class="form-group">
@@ -311,28 +344,100 @@
         </div>
       </div>
 
-      <!-- Hardware & Receivers Card -->
-      <div class="card" style="border: 1px solid var(--border-color); border-radius: 8px;">
+      <!-- Hardware: ADS-B Receiver Card -->
+      <div class="card" style="border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 1.25rem;">
         <div class="card-header">
-          <span class="card-title">Hardware & Feed Configuration</span>
+          <span class="card-title">ADS-B Receiver (readsb / tar1090 on Pi 4)</span>
+          <button class="btn btn-secondary btn-sm" id="test-readsb-btn">Test Connection</button>
         </div>
 
-        <div class="form-group">
-          <label class="form-label">Raspberry Pi 4 readsb / tar1090 URL</label>
+        <div style="display: grid; grid-template-columns: 2fr 1fr 2fr; gap: 0.75rem;">
+          <div class="form-group">
+            <label class="form-label">Pi 4 IP / Hostname</label>
+            <input type="text" class="form-input" id="setting-readsb-host" placeholder="192.168.1.100 or raspberrypi.local">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Port</label>
+            <input type="number" class="form-input" id="setting-readsb-port" placeholder="80">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Path</label>
+            <input type="text" class="form-input" id="setting-readsb-path" placeholder="/tar1090/data/aircraft.json">
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 0.5rem;">
+          <label class="form-label">Or Direct Custom URL</label>
           <input type="text" class="form-input" id="setting-readsb-url" placeholder="http://192.168.1.100/tar1090/data/aircraft.json">
-          <div class="form-hint">Address of your readsb JSON feed on your local home network.</div>
+        </div>
+
+        <div id="readsb-test-status" style="font-size: 0.8rem; margin-top: 0.35rem; display: none; padding: 0.4rem 0.6rem; border-radius: 4px;"></div>
+      </div>
+
+      <!-- Hardware: Weather Station Card -->
+      <div class="card" style="border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 1.25rem;">
+        <div class="card-header">
+          <span class="card-title">Weather Station Telemetry (Ecowitt / Aloft)</span>
         </div>
 
         <div class="form-group">
-          <label class="form-label">Home Assistant URL (Ecowitt Integration)</label>
-          <input type="text" class="form-input" id="setting-hass-url" placeholder="http://homeassistant.local:8123">
-          <div class="form-hint">Home Assistant endpoint providing Ecowitt weather sensor entities.</div>
+          <label class="form-label">Select Ground Weather Source</label>
+          <select class="form-input" id="setting-weather-provider" style="background-color: var(--bg-tertiary); color: var(--text-primary);">
+            <option value="ecowitt_local">Direct Ecowitt Gateway Local IP (Zero API Key / Zero Cloud)</option>
+            <option value="ecowitt_push">Direct Ecowitt Local Push (Customized Weather Service)</option>
+            <option value="homeassistant">Home Assistant (Ecowitt Entities)</option>
+            <option value="aerodrome">Aerodrome METAR Only (NOAA KNHK / 2W6)</option>
+          </select>
         </div>
 
-        <div class="form-group">
-          <label class="form-label">Home Assistant Long-Lived Access Token</label>
-          <input type="password" class="form-input" id="setting-hass-token" placeholder="Bearer token...">
-          <div class="form-hint">Generated in Home Assistant under Profile -> Long-Lived Access Tokens.</div>
+        <!-- Sub-panel: Ecowitt Local IP -->
+        <div id="panel-weather-ecowitt-local" style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--border-color);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <span style="font-size: 0.85rem; font-weight: 600;">Ecowitt Local Network IP</span>
+            <button class="btn btn-secondary btn-sm" id="test-ecowitt-btn">Test Gateway</button>
+          </div>
+          <div style="display: grid; grid-template-columns: 3fr 1fr; gap: 0.75rem;">
+            <div class="form-group">
+              <label class="form-label">Ecowitt IP Address</label>
+              <input type="text" class="form-input" id="setting-ecowitt-ip" placeholder="192.168.1.150">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Port</label>
+              <input type="number" class="form-input" id="setting-ecowitt-port" placeholder="80">
+            </div>
+          </div>
+          <div class="form-hint">Queries your local GW1000/GW1100/GW2000/Wittboy gateway directly on your Wi-Fi via <code>/get_livedata_info</code>. Zero API keys required.</div>
+          <div id="ecowitt-test-status" style="font-size: 0.8rem; margin-top: 0.35rem; display: none; padding: 0.4rem 0.6rem; border-radius: 4px;"></div>
+        </div>
+
+        <!-- Sub-panel: Ecowitt Local Push -->
+        <div id="panel-weather-ecowitt-push" style="display: none; margin-top: 0.75rem; padding: 0.75rem; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--border-color);">
+          <span style="font-size: 0.85rem; font-weight: 600;">Ecowitt Local Push Instructions:</span>
+          <div class="form-hint" style="margin-top: 0.4rem; line-height: 1.5;">
+            In the <strong>WS View Plus</strong> or <strong>Ecowitt App</strong>, navigate to <em>Weather Services &gt; Customized</em>:<br>
+            • <strong>Protocol:</strong> Ecowitt<br>
+            • <strong>Server IP / Hostname:</strong> <span id="push-server-ip" style="color: #38bdf8;">(This computer's IP)</span><br>
+            • <strong>Path:</strong> <code>/api/weather/ecowitt</code><br>
+            • <strong>Port:</strong> <code>8085</code><br>
+            • <strong>Interval:</strong> 16s
+          </div>
+        </div>
+
+        <!-- Sub-panel: Home Assistant -->
+        <div id="panel-weather-homeassistant" style="display: none; margin-top: 0.75rem; padding: 0.75rem; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--border-color);">
+          <div class="form-group">
+            <label class="form-label">Home Assistant URL</label>
+            <input type="text" class="form-input" id="setting-hass-url" placeholder="http://homeassistant.local:8123">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Long-Lived Access Token</label>
+            <input type="password" class="form-input" id="setting-hass-token" placeholder="Bearer token...">
+          </div>
+        </div>
+
+        <!-- Weather Underground informational banner -->
+        <div style="margin-top: 0.85rem; padding: 0.6rem 0.8rem; background: rgba(59, 130, 246, 0.08); border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 0.78rem; color: #94a3b8; line-height: 1.4;">
+          <strong>Why direct local Ecowitt?</strong> Weather Underground (WU) requires a paid or registered API key and restricts query rates. Connecting directly to your Ecowitt station via <em>Local IP</em> or <em>Local Push</em> updates every 16 seconds with 100% reliability, zero cloud downtime, and <strong>zero API keys</strong>.
         </div>
 
         <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 1.25rem 0;"/>
@@ -359,9 +464,9 @@
   </main>
 
   <!-- JavaScript Modules with cache-busting -->
-  <script src="/static/js/map.js?v=2.3"></script>
-  <script src="/static/js/charts.js?v=2.3"></script>
-  <script src="/static/js/export.js?v=2.3"></script>
-  <script src="/static/js/app.js?v=2.3"></script>
+  <script src="/static/js/map.js?v=2.5"></script>
+  <script src="/static/js/charts.js?v=2.5"></script>
+  <script src="/static/js/export.js?v=2.5"></script>
+  <script src="/static/js/app.js?v=2.5"></script>
 </body>
 </html>

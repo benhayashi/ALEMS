@@ -39,20 +39,20 @@ class ActiveTrack:
         pt_record = {
             "event_id": self.event_id,
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-            "lat": point["lat"],
-            "lon": point["lon"],
-            "alt_msl_ft": point.get("alt_msl_ft"),
-            "alt_agl_ft": point.get("alt_agl_ft"),
-            "ground_speed_kts": point.get("gs"),
-            "track_deg": point.get("track"),
-            "vertical_rate_fpm": point.get("baro_rate") or point.get("geom_rate") or 0.0,
-            "dist_to_house_ft": point.get("dist_ft"),
-            "slant_range_ft": slant_range,
-            "bearing_to_house": point.get("bearing_to_house"),
-            "wind_speed_mph": exposure_data.get("wind_speed_mph"),
-            "wind_dir_deg": exposure_data.get("wind_dir_deg"),
+            "lat": float(point["lat"]),
+            "lon": float(point["lon"]),
+            "alt_msl_ft": float(point.get("alt_msl_ft", 0.0)),
+            "alt_agl_ft": float(point.get("alt_agl_ft", 0.0)),
+            "ground_speed_kts": float(point.get("gs") or 0.0),
+            "track_deg": float(point.get("track") or 0.0),
+            "vertical_rate_fpm": float(point.get("baro_rate") or point.get("geom_rate") or 0.0),
+            "dist_to_house_ft": float(point.get("dist_ft", 0.0)),
+            "slant_range_ft": float(slant_range if slant_range != float("inf") else 0.0),
+            "bearing_to_house": float(point.get("bearing_to_house", 0.0)),
+            "wind_speed_mph": float(exposure_data.get("wind_speed_mph", 0.0)),
+            "wind_dir_deg": float(exposure_data.get("wind_dir_deg", 0.0)),
             "is_downwind": 1 if exposure_data.get("is_downwind") else 0,
-            "exposure_score": exposure_data.get("exposure_score", 0.0)
+            "exposure_score": float(exposure_data.get("exposure_score", 0.0))
         }
         self.points.append(pt_record)
 
@@ -116,30 +116,30 @@ class ActiveTrack:
             "engine_type": self.aircraft_meta.get("engine_type", "Piston"),
             "fuel_type": self.aircraft_meta.get("fuel_type", "100LL"),
             "is_leaded": 1 if self.aircraft_meta.get("is_leaded", True) else 0,
-            "min_distance_ft": cpa.get("dist_to_house_ft", 0.0),
-            "min_slant_range_ft": self.min_slant_range_ft if self.min_slant_range_ft != float("inf") else 0.0,
-            "cpa_alt_msl_ft": cpa.get("alt_msl_ft", 0.0),
-            "cpa_alt_agl_ft": cpa.get("alt_agl_ft", 0.0),
-            "cpa_ground_speed_kts": cpa.get("ground_speed_kts", 0.0),
-            "cpa_track_deg": cpa.get("track_deg", 0.0),
-            "cpa_vert_rate_fpm": cpa.get("vertical_rate_fpm", 0.0),
-            "cpa_lat": cpa.get("lat", 0.0),
-            "cpa_lon": cpa.get("lon", 0.0),
-            "ecowitt_wind_speed_mph": ecowitt.get("wind_speed_mph", 0.0),
-            "ecowitt_wind_dir_deg": ecowitt.get("wind_dir_deg", 0.0),
-            "ecowitt_temp_f": ecowitt.get("temp_f", 0.0),
-            "ecowitt_humidity": ecowitt.get("humidity", 0.0),
+            "min_distance_ft": float(cpa.get("dist_to_house_ft", 0.0)),
+            "min_slant_range_ft": float(self.min_slant_range_ft if self.min_slant_range_ft != float("inf") else 0.0),
+            "cpa_alt_msl_ft": float(cpa.get("alt_msl_ft", 0.0)),
+            "cpa_alt_agl_ft": float(cpa.get("alt_agl_ft", 0.0)),
+            "cpa_ground_speed_kts": float(cpa.get("ground_speed_kts", 0.0)),
+            "cpa_track_deg": float(cpa.get("track_deg", 0.0)),
+            "cpa_vert_rate_fpm": float(cpa.get("vertical_rate_fpm", 0.0)),
+            "cpa_lat": float(cpa.get("lat", 0.0)),
+            "cpa_lon": float(cpa.get("lon", 0.0)),
+            "ecowitt_wind_speed_mph": float(ecowitt.get("wind_speed_mph", 0.0)),
+            "ecowitt_wind_dir_deg": float(ecowitt.get("wind_dir_deg", 0.0)),
+            "ecowitt_temp_f": float(ecowitt.get("temp_f", 0.0)),
+            "ecowitt_humidity": float(ecowitt.get("humidity", 0.0)),
             "aerodrome_station": aerodrome.get("station", "KNHK"),
-            "aerodrome_wind_speed_kts": aerodrome.get("wind_speed_kts", 0.0),
-            "aerodrome_wind_dir_deg": aerodrome.get("wind_dir_deg", 0.0),
-            "wind_alignment_deg": round(cpa.get("bearing_to_house", 0.0) - aerodrome.get("wind_dir_deg", 0.0), 1),
+            "aerodrome_wind_speed_kts": float(aerodrome.get("wind_speed_kts", 0.0)),
+            "aerodrome_wind_dir_deg": float(aerodrome.get("wind_dir_deg", 0.0)),
+            "wind_alignment_deg": float(round(float(cpa.get("bearing_to_house", 0.0)) - float(aerodrome.get("wind_dir_deg", 0.0)), 1)),
             "is_downwind": 1 if is_downwind else 0,
-            "lead_emission_rate_mg_s": round(dispersion_model.calculate_emission_rate_g_per_s(self.aircraft_meta) * 1000.0, 2),
-            "max_exposure_score": self.max_exposure_score,
-            "avg_exposure_score": avg_score,
+            "lead_emission_rate_mg_s": float(round(dispersion_model.calculate_emission_rate_g_per_s(self.aircraft_meta) * 1000.0, 2)),
+            "max_exposure_score": float(self.max_exposure_score),
+            "avg_exposure_score": float(avg_score),
             "exposure_level": level,
-            "total_duration_sec": duration,
-            "point_count": len(self.points)
+            "total_duration_sec": float(duration),
+            "point_count": int(len(self.points))
         }
 
 
@@ -190,9 +190,13 @@ class MonitoringDaemon:
                     if not raw_aircraft and not adsb_client.is_connected:
                         raw_aircraft = mock_simulator.get_aircraft_snapshot()
 
-                # 3. Filter & Augment Telemetry in Geofence
-                in_range_aircraft: List[Dict[str, Any]] = []
-                current_hexes = set()
+                # 3. Filter & Augment Telemetry
+                all_augmented_aircraft: List[Dict[str, Any]] = []
+                in_geofence_aircraft: List[Dict[str, Any]] = []
+                current_in_geofence_hexes = set()
+
+                wind_spd = float(weather.get("effective_wind_speed_mph", 5.0))
+                wind_dir = float(weather.get("effective_wind_dir_deg", 110.0))
 
                 for ac in raw_aircraft:
                     lat = ac.get("lat")
@@ -201,52 +205,59 @@ class MonitoringDaemon:
                         continue
 
                     dist_nm_val = distance_nm(lat, lon, config.HOME_LAT, config.HOME_LON)
-                    if dist_nm_val <= config.ACTIVE_MONITOR_RADIUS_NM:
-                        hex_code = (ac.get("hex") or "UNKNOWN").upper()
-                        current_hexes.add(hex_code)
+                    # Filter to regional reception (within 60 NM)
+                    if dist_nm_val > 60.0:
+                        continue
 
-                        dist_ft_val = distance_ft(lat, lon, config.HOME_LAT, config.HOME_LON)
-                        alt_msl = float(ac.get("alt_geom") or ac.get("alt_baro") or 1000.0)
-                        alt_agl = max(0.0, alt_msl - config.HOME_ELEV_MSL_FT)
-                        slant_range = calculate_3d_slant_range_ft(dist_ft_val, alt_agl)
-                        bearing_from_house = initial_bearing(config.HOME_LAT, config.HOME_LON, lat, lon)
-                        bearing_to_house = initial_bearing(lat, lon, config.HOME_LAT, config.HOME_LON)
+                    hex_code = (ac.get("hex") or "UNKNOWN").upper()
+                    dist_ft_val = distance_ft(lat, lon, config.HOME_LAT, config.HOME_LON)
+                    alt_msl = float(ac.get("alt_geom") or ac.get("alt_baro") or 1000.0)
+                    alt_agl = max(0.0, alt_msl - config.HOME_ELEV_MSL_FT)
+                    slant_range = calculate_3d_slant_range_ft(dist_ft_val, alt_agl)
+                    bearing_from_house = initial_bearing(config.HOME_LAT, config.HOME_LON, lat, lon)
+                    bearing_to_house = initial_bearing(lat, lon, config.HOME_LAT, config.HOME_LON)
 
-                        # Classification
-                        meta = classifier.classify(ac)
+                    # Classification
+                    meta = classifier.classify(ac)
 
-                        # Dispersion & Exposure calculation
-                        gs = float(ac.get("gs") or 100.0)
-                        vs = float(ac.get("baro_rate") or ac.get("geom_rate") or 0.0)
-                        wind_spd = weather["effective_wind_speed_mph"]
-                        wind_dir = weather["effective_wind_dir_deg"]
+                    # Dispersion & Exposure calculation
+                    gs = float(ac.get("gs") or 100.0)
+                    vs = float(ac.get("baro_rate") or ac.get("geom_rate") or 0.0)
 
-                        disp = dispersion_model.calculate_point_exposure(
-                            lat=lat,
-                            lon=lon,
-                            alt_msl_ft=alt_msl,
-                            ground_speed_kts=gs,
-                            vertical_rate_fpm=vs,
-                            aircraft_meta=meta,
-                            wind_speed_mph=wind_spd,
-                            wind_dir_deg=wind_dir
-                        )
+                    disp = dispersion_model.calculate_point_exposure(
+                        lat=lat,
+                        lon=lon,
+                        alt_msl_ft=alt_msl,
+                        ground_speed_kts=gs,
+                        vertical_rate_fpm=vs,
+                        aircraft_meta=meta,
+                        wind_speed_mph=wind_spd,
+                        wind_dir_deg=wind_dir
+                    )
 
-                        augmented = dict(ac)
-                        augmented.update({
-                            "dist_nm": round(dist_nm_val, 2),
-                            "dist_ft": round(dist_ft_val, 0),
-                            "alt_msl_ft": round(alt_msl, 0),
-                            "alt_agl_ft": round(alt_agl, 0),
-                            "slant_range_ft": round(slant_range, 0),
-                            "bearing_from_house": round(bearing_from_house, 1),
-                            "bearing_to_house": round(bearing_to_house, 1),
-                            "aircraft_meta": meta,
-                            "dispersion": disp
-                        })
-                        in_range_aircraft.append(augmented)
+                    in_geofence = dist_nm_val <= config.ACTIVE_MONITOR_RADIUS_NM
 
-                        # Manage Active Track
+                    augmented = dict(ac)
+                    augmented.update({
+                        "hex": hex_code,
+                        "dist_nm": round(dist_nm_val, 2),
+                        "dist_ft": round(dist_ft_val, 0),
+                        "alt_msl_ft": round(alt_msl, 0),
+                        "alt_agl_ft": round(alt_agl, 0),
+                        "slant_range_ft": round(slant_range, 0),
+                        "bearing_from_house": round(bearing_from_house, 1),
+                        "bearing_to_house": round(bearing_to_house, 1),
+                        "in_geofence": in_geofence,
+                        "aircraft_meta": meta,
+                        "dispersion": disp
+                    })
+                    all_augmented_aircraft.append(augmented)
+
+                    if in_geofence:
+                        in_geofence_aircraft.append(augmented)
+                        current_in_geofence_hexes.add(hex_code)
+
+                        # Manage Active Track for regulatory flyover log
                         if hex_code not in self.active_tracks:
                             self.active_tracks[hex_code] = ActiveTrack(hex_code, augmented, meta)
 
@@ -262,12 +273,12 @@ class MonitoringDaemon:
                         }
                         track.add_point(augmented, exposure_pt)
 
-                self.latest_aircraft_snapshot = in_range_aircraft
+                self.latest_aircraft_snapshot = all_augmented_aircraft
 
                 # 4. Check for completed / expired flyover events
                 expired_hexes = []
                 for hex_code, track in self.active_tracks.items():
-                    if hex_code not in current_hexes or track.is_expired():
+                    if hex_code not in current_in_geofence_hexes or track.is_expired():
                         # Track has left vicinity
                         if track.has_triggered_event and len(track.points) >= 3:
                             summary = track.to_event_summary(weather)
@@ -282,7 +293,10 @@ class MonitoringDaemon:
                 # 5. Broadcast real-time telemetry snapshot to connected UI clients
                 await self.broadcast({
                     "type": "SNAPSHOT",
-                    "aircraft": in_range_aircraft,
+                    "aircraft": all_augmented_aircraft,
+                    "geofence_count": len(in_geofence_aircraft),
+                    "total_count": len(all_augmented_aircraft),
+                    "adsb_connected": adsb_client.is_connected,
                     "weather": weather,
                     "timestamp": time.time()
                 })

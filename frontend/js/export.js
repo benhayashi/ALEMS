@@ -25,7 +25,9 @@ function downloadEventTrajectoryCsv(eventId) {
 
 function copyCorroborationHash(hashStr) {
   navigator.clipboard.writeText(hashStr).then(() => {
-    alert(`Corroboration SHA256 copied to clipboard:\n${hashStr}`);
+    if (typeof showToast === 'function') {
+      showToast(`SHA256 hash copied to clipboard: ${hashStr.slice(0, 16)}...`);
+    }
   }).catch(err => {
     prompt("Copy hash:", hashStr);
   });

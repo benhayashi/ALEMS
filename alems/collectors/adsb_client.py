@@ -8,11 +8,128 @@ from typing import List, Dict, Any, Optional
 from alems.config import config
 from alems.geodesy import distance_nm, distance_ft, initial_bearing
 
+import re
+import struct
+import urllib.parse
+
+def decode_varint(buf: bytes, pos: int):
+    res = 0
+    shift = 0
+    while pos < len(buf):
+        b = buf[pos]
+        pos += 1
+        res |= (b & 0x7F) << shift
+        shift += 7
+        if not (b & 0x80):
+            break
+    return res, pos
+
+def to_signed(val: int) -> int:
+    if val >= (1 << 63):
+        return val - (1 << 64)
+    if val >= (1 << 31) and val < (1 << 32):
+        return val - (1 << 32)
+    return val
+
+def decode_readsb_protobuf(buf: bytes) -> List[Dict[str, Any]]:
+    """Decode Mictronics readsb /data/aircraft.pb protobuf stream."""
+    pos = 0
+    aircraft: List[Dict[str, Any]] = []
+
+    def decode_aircraft_meta(meta_buf: bytes, p: int, end_p: int) -> Dict[str, Any]:
+        ac: Dict[str, Any] = {}
+        while p < end_p:
+            key, p = decode_varint(meta_buf, p)
+            tag = key >> 3
+            wire = key & 0x7
+            if wire == 0:  # varint
+                val, p = decode_varint(meta_buf, p)
+                if tag == 1:
+                    ac['hex'] = hex(val & 0xFFFFFF)[2:].lower()
+                elif tag == 3:
+                    ac['squawk'] = str(val)
+                elif tag == 5:
+                    # signed altitude
+                    s_alt = float(to_signed(val))
+                    ac['alt_baro'] = s_alt
+                    ac['altitude'] = s_alt
+                elif tag == 20:
+                    ac['alt_geom'] = float(to_signed(val))
+                elif tag == 21:
+                    ac['baro_rate'] = float(to_signed(val))
+                elif tag == 23:
+                    ac['gs'] = float(val)
+                    ac['speed'] = float(val)
+                elif tag == 27:
+                    ac['track'] = float(val)
+            elif wire == 1:  # 64-bit double
+                val = struct.unpack('<d', meta_buf[p:p+8])[0]
+                p += 8
+                if tag == 8:
+                    ac['lat'] = round(val, 6)
+                elif tag == 9:
+                    ac['lon'] = round(val, 6)
+            elif wire == 2:  # length-delimited string
+                length, p = decode_varint(meta_buf, p)
+                data_bytes = meta_buf[p:p+length]
+                p += length
+                if tag == 2:
+                    ac['flight'] = data_bytes.decode('utf-8', errors='ignore').strip()
+            elif wire == 5:  # 32-bit float
+                val = struct.unpack('<f', meta_buf[p:p+4])[0]
+                p += 4
+                if tag == 12:
+                    ac['rssi'] = round(val, 1)
+            else:
+                break
+        return ac
+
+    while pos < len(buf):
+        try:
+            key, pos = decode_varint(buf, pos)
+            tag = key >> 3
+            wire = key & 0x7
+            if wire == 0:
+                val, pos = decode_varint(buf, pos)
+            elif wire == 2:
+                length, pos = decode_varint(buf, pos)
+                if tag == 15:  # AircraftMeta
+                    ac = decode_aircraft_meta(buf, pos, pos + length)
+                    if ac.get('hex'):
+                        aircraft.append(ac)
+                pos += length
+            else:
+                break
+        except Exception:
+            break
+
+    return aircraft
+
+def normalize_readsb_url(url_or_host: str) -> str:
+    """Normalize user input (IP, IP:port, IP/port, or URL) into a valid readsb endpoint."""
+    if not url_or_host or not url_or_host.strip():
+        return ""
+    s = url_or_host.strip()
+    if not s.startswith("http://") and not s.startswith("https://") and not s.startswith("file://") and not s.startswith("/"):
+        s = f"http://{s}"
+    # Convert slash-port e.g. http://192.168.1.216/8081 to http://192.168.1.216:8081
+    m = re.match(r"^(https?://[^/:]+)/(\d{2,5})(/.*)?$", s)
+    if m:
+        base, port, rest = m.group(1), m.group(2), m.group(3) or ""
+        s = f"{base}:{port}{rest}"
+    # If no path specified, append standard path
+    if s.startswith("http://") or s.startswith("https://"):
+        parsed = urllib.parse.urlparse(s)
+        if not parsed.path or parsed.path == "/":
+            s = urllib.parse.urljoin(s, "/data/aircraft.pb")
+    return s
+
 class ADSBClient:
-    """Client for reading live ADS-B data from readsb on Raspberry Pi."""
+    """Client for reading live ADS-B data from readsb (both JSON and Protobuf)."""
 
     def __init__(self, endpoint_url: Optional[str] = None):
-        self.endpoint_url = endpoint_url or config.READSB_URL
+        raw_url = endpoint_url or config.READSB_URL
+        self.endpoint_url = normalize_readsb_url(raw_url)
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "ALEMS-Lead-Monitor/1.0"})
         self.last_fetch_time: float = 0.0
@@ -20,18 +137,51 @@ class ADSBClient:
         self.last_error: Optional[str] = None
 
     def fetch_raw_aircraft(self) -> List[Dict[str, Any]]:
-        """Fetch latest aircraft.json from readsb receiver."""
+        """Fetch latest aircraft data from readsb receiver (JSON or Protobuf)."""
         try:
-            # Supports both http:// URLs and local file:/// paths
             if self.endpoint_url.startswith("file://") or self.endpoint_url.startswith("/"):
                 path = self.endpoint_url.replace("file://", "")
                 import json
                 with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                return data.get("aircraft", [])
+
+            resp = self.session.get(self.endpoint_url, timeout=3.0)
+            
+            # If 404, try automatic fallback between .pb and .json
+            if resp.status_code == 404:
+                fallback_url = None
+                if "/tar1090/data/aircraft.json" in self.endpoint_url:
+                    fallback_url = self.endpoint_url.replace("/tar1090/data/aircraft.json", "/data/aircraft.pb")
+                elif "/data/aircraft.json" in self.endpoint_url:
+                    fallback_url = self.endpoint_url.replace("/data/aircraft.json", "/data/aircraft.pb")
+                elif "/data/aircraft.pb" in self.endpoint_url:
+                    fallback_url = self.endpoint_url.replace("/data/aircraft.pb", "/tar1090/data/aircraft.json")
+                
+                if fallback_url:
+                    resp = self.session.get(fallback_url, timeout=3.0)
+                    if resp.status_code == 200:
+                        self.endpoint_url = fallback_url
+                        config.save_persisted({"READSB_URL": fallback_url})
+
+            resp.raise_for_status()
+
+            # Check if Protobuf or JSON
+            content_type = resp.headers.get("Content-Type", "")
+            if "protobuf" in content_type or self.endpoint_url.endswith(".pb") or (resp.content and resp.content[:2] in (b'\x08\x01', b'\x08\x00', b'\x08\x02')):
+                aircraft_list = decode_readsb_protobuf(resp.content)
             else:
-                resp = self.session.get(self.endpoint_url, timeout=3.0)
-                resp.raise_for_status()
                 data = resp.json()
+                aircraft_list = data.get("aircraft", [])
+
+            self.is_connected = True
+            self.last_error = None
+            self.last_fetch_time = time.time()
+            return aircraft_list
+        except Exception as e:
+            self.is_connected = False
+            self.last_error = str(e)
+            return []
 
             self.is_connected = True
             self.last_error = None

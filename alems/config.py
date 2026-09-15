@@ -35,9 +35,20 @@ class Settings(BaseModel):
 
     # ADS-B Receiver Configuration (readsb on Pi 4)
     READSB_URL: str = os.getenv("READSB_URL", "http://raspberrypi.local/tar1090/data/aircraft.json")
+    READSB_HOST: str = os.getenv("READSB_HOST", "")
+    READSB_PORT: int = int(os.getenv("READSB_PORT", "80"))
+    READSB_PATH: str = os.getenv("READSB_PATH", "/tar1090/data/aircraft.json")
     READSB_POLL_INTERVAL_SEC: float = float(os.getenv("READSB_POLL_INTERVAL", "1.5"))
 
-    # Home Assistant (Ecowitt Station)
+    # Weather Source & Hardware Configuration
+    # Options: "ecowitt_local", "ecowitt_push", "homeassistant", "aerodrome"
+    WEATHER_PROVIDER: str = os.getenv("WEATHER_PROVIDER", "aerodrome")
+    
+    # Direct Ecowitt Gateway Local IP (GW1000/GW1100/GW2000/Wittboy)
+    ECOWITT_IP: str = os.getenv("ECOWITT_IP", "")
+    ECOWITT_PORT: int = int(os.getenv("ECOWITT_PORT", "80"))
+
+    # Home Assistant (Alternative Ecowitt Integration)
     HASS_URL: str = os.getenv("HASS_URL", "http://homeassistant.local:8123")
     HASS_TOKEN: str = os.getenv("HASS_TOKEN", "")
     HASS_WIND_SPEED_ENTITY: str = os.getenv("HASS_WIND_SPEED", "sensor.ecowitt_wind_speed")

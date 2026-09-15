@@ -2,8 +2,10 @@
 
 import asyncio
 from pathlib import Path
-from typing import Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from typing import Optional, Dict, Any, List
+import time
+import requests
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -12,7 +14,7 @@ from alems.config import config, BASE_DIR
 from alems.storage.db import db
 from alems.storage.exporter import exporter
 from alems.daemon import daemon
-from alems.collectors.adsb_client import adsb_client
+from alems.collectors.adsb_client import adsb_client, normalize_readsb_url, ADSBClient
 from alems.collectors.weather_client import weather_collector
 
 app = FastAPI(title="Aerial Lead Exposure Monitoring System (ALEMS)", version="1.0.0")
@@ -79,6 +81,12 @@ def get_config():
         },
         "endpoints": {
             "readsb_url": config.READSB_URL,
+            "readsb_host": config.READSB_HOST,
+            "readsb_port": config.READSB_PORT,
+            "readsb_path": config.READSB_PATH,
+            "weather_provider": config.WEATHER_PROVIDER,
+            "ecowitt_ip": config.ECOWITT_IP,
+            "ecowitt_port": config.ECOWITT_PORT,
             "hass_url": config.HASS_URL,
             "has_hass_token": bool(config.HASS_TOKEN),
             "metar_stations": config.METAR_STATIONS
@@ -102,6 +110,12 @@ class ConfigUpdateRequest(BaseModel):
     active_radius_nm: Optional[float] = None
     flyover_radius_nm: Optional[float] = None
     readsb_url: Optional[str] = None
+    readsb_host: Optional[str] = None
+    readsb_port: Optional[int] = None
+    readsb_path: Optional[str] = None
+    weather_provider: Optional[str] = None
+    ecowitt_ip: Optional[str] = None
+    ecowitt_port: Optional[int] = None
     hass_url: Optional[str] = None
     hass_token: Optional[str] = None
     simulation_mode: Optional[bool] = None
@@ -140,9 +154,35 @@ async def update_config(req: ConfigUpdateRequest):
     if req.flyover_radius_nm is not None:
         updates["FLYOVER_EVENT_RADIUS_NM"] = req.flyover_radius_nm
 
+    if req.readsb_host is not None:
+        updates["READSB_HOST"] = req.readsb_host
+    if req.readsb_port is not None:
+        updates["READSB_PORT"] = req.readsb_port
+    if req.readsb_path is not None:
+        updates["READSB_PATH"] = req.readsb_path
+
     if req.readsb_url is not None:
         updates["READSB_URL"] = req.readsb_url
         adsb_client.endpoint_url = req.readsb_url
+    elif req.readsb_host:
+        host = req.readsb_host.strip()
+        port = req.readsb_port or 80
+        path = req.readsb_path or "/tar1090/data/aircraft.json"
+        if not host.startswith("http://") and not host.startswith("https://"):
+            host = f"http://{host}"
+        p = f":{port}" if port and port not in (80, 443) else ""
+        clean_path = path if path.startswith("/") else f"/{path}"
+        constructed_url = f"{host}{p}{clean_path}"
+        updates["READSB_URL"] = constructed_url
+        adsb_client.endpoint_url = constructed_url
+
+    if req.weather_provider is not None:
+        updates["WEATHER_PROVIDER"] = req.weather_provider
+    if req.ecowitt_ip is not None:
+        updates["ECOWITT_IP"] = req.ecowitt_ip.strip()
+    if req.ecowitt_port is not None:
+        updates["ECOWITT_PORT"] = req.ecowitt_port
+
     if req.hass_url is not None:
         updates["HASS_URL"] = req.hass_url
     if req.hass_token is not None:
@@ -172,6 +212,80 @@ def lookup_airport(code: str = Query(...)):
         return JSONResponse({"error": f"Airport code not found: '{code}'"}, status_code=404)
     return res
 
+@app.api_route("/api/weather/ecowitt", methods=["GET", "POST"])
+async def receive_ecowitt_push(request: Request):
+    """Webhook endpoint for Ecowitt Customized Weather Service pushes."""
+    params = {}
+    if request.method == "POST":
+        try:
+            form = await request.form()
+            params.update(dict(form))
+        except Exception:
+            pass
+    params.update(dict(request.query_params))
+    data = weather_collector.handle_ecowitt_push_data(params)
+    return {"status": "success", "received_fields": len(params), "live_weather": data}
+
+@app.get("/api/test/readsb")
+def test_readsb_connection(url: Optional[str] = None, host: Optional[str] = None, port: Optional[int] = 80, path: Optional[str] = "/tar1090/data/aircraft.json"):
+    """Test connectivity to readsb receiver and return tracked aircraft count."""
+    target_url = url
+    if not target_url and host:
+        clean_host = host.strip()
+        if not clean_host.startswith("http://") and not clean_host.startswith("https://"):
+            clean_host = f"http://{clean_host}"
+        p = f":{port}" if port and port not in (80, 443) else ""
+        clean_path = path if path and path.startswith("/") else f"/{path or 'tar1090/data/aircraft.json'}"
+        target_url = f"{clean_host}{p}{clean_path}"
+    
+    target_url = normalize_readsb_url(target_url or config.READSB_URL)
+    if not target_url:
+        return {"success": False, "error": "No ADS-B URL or IP provided"}
+
+    try:
+        client = ADSBClient(endpoint_url=target_url)
+        t0 = time.time()
+        ac_list = client.fetch_raw_aircraft()
+        elapsed_ms = round((time.time() - t0) * 1000, 1)
+        if client.is_connected:
+            return {
+                "success": True,
+                "url": client.endpoint_url,
+                "status_code": 200,
+                "aircraft_count": len(ac_list),
+                "latency_ms": elapsed_ms
+            }
+        else:
+            return {"success": False, "url": client.endpoint_url or target_url, "error": client.last_error or "Failed to connect to readsb"}
+    except Exception as e:
+        return {"success": False, "url": target_url, "error": str(e)}
+
+@app.get("/api/test/ecowitt")
+def test_ecowitt_connection(ip: Optional[str] = None, port: Optional[int] = 80):
+    """Test local network connection to Ecowitt gateway."""
+    target_ip = ip or config.ECOWITT_IP
+    if not target_ip:
+        return {"success": False, "error": "No Ecowitt IP address specified"}
+    
+    target_port = port or config.ECOWITT_PORT or 80
+    url = f"http://{target_ip}:{target_port}/get_livedata_info"
+    try:
+        t0 = time.time()
+        resp = requests.get(url, timeout=3.0)
+        elapsed_ms = round((time.time() - t0) * 1000, 1)
+        if resp.status_code == 200:
+            data = resp.json()
+            return {
+                "success": True,
+                "url": url,
+                "latency_ms": elapsed_ms,
+                "data_keys": list(data.keys()) if isinstance(data, dict) else []
+            }
+        else:
+            return {"success": False, "url": url, "status_code": resp.status_code, "error": f"HTTP {resp.status_code}"}
+    except Exception as e:
+        return {"success": False, "url": url, "error": str(e)}
+
 @app.get("/api/status")
 def get_status():
     return {
@@ -192,9 +306,14 @@ def get_status():
 
 @app.get("/api/aircraft")
 def get_active_aircraft():
+    total = len(daemon.latest_aircraft_snapshot)
+    in_geo = sum(1 for a in daemon.latest_aircraft_snapshot if a.get("in_geofence"))
     return {
         "aircraft": daemon.latest_aircraft_snapshot,
-        "count": len(daemon.latest_aircraft_snapshot),
+        "count": total,
+        "total_count": total,
+        "geofence_count": in_geo,
+        "adsb_connected": adsb_client.is_connected,
         "weather": daemon.latest_weather_snapshot
     }
 
@@ -206,6 +325,13 @@ def get_weather():
 def get_events(limit: int = 100, leaded_only: bool = False):
     events = db.get_recent_events(limit=limit, leaded_only=leaded_only)
     return {"events": events, "count": len(events)}
+
+@app.post("/api/events/clear")
+@app.delete("/api/events")
+def clear_events():
+    """Purge all recorded events and trajectory points."""
+    count = db.clear_all_events()
+    return {"status": "success", "purged_count": count}
 
 @app.get("/api/events/{event_id}/points")
 def get_event_trajectory(event_id: str):
@@ -234,10 +360,15 @@ async def websocket_endpoint(websocket: WebSocket):
     queue = asyncio.Queue()
     daemon.register_subscriber(queue)
     try:
+        total = len(daemon.latest_aircraft_snapshot)
+        in_geo = sum(1 for a in daemon.latest_aircraft_snapshot if a.get("in_geofence"))
         # Send immediate initial state
         await websocket.send_json({
             "type": "INITIAL_STATE",
             "aircraft": daemon.latest_aircraft_snapshot,
+            "total_count": total,
+            "geofence_count": in_geo,
+            "adsb_connected": adsb_client.is_connected,
             "weather": daemon.latest_weather_snapshot,
             "events": db.get_recent_events(limit=25),
             "stats": db.get_statistics()

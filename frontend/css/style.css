@@ -688,4 +688,87 @@ tr:hover {
   #tab-settings {
     padding: 0.75rem;
   }
+
+  /* When pin drop is active on mobile, hide the sidebar completely and expand map */
+  #tab-radar.pin-drop-active #map-container {
+    height: 100% !important;
+    min-height: 100% !important;
+  }
+
+  #tab-radar.pin-drop-active .radar-sidebar {
+    display: none !important;
+  }
+}
+
+/* Pin Drop Full Screen & Floating Banner */
+#tab-radar.pin-drop-active .radar-sidebar {
+  display: none !important;
+}
+
+#tab-radar.pin-drop-active #map-container {
+  width: 100% !important;
+  height: 100% !important;
+  flex: 1 !important;
+}
+
+.pin-drop-banner {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  background-color: rgba(15, 23, 42, 0.95);
+  border: 1.5px solid #3b82f6;
+  border-radius: 9999px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.75);
+  padding: 0.5rem 1.1rem;
+  display: none;
+  align-items: center;
+  gap: 0.75rem;
+  color: #f8fafc;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pin-drop-banner button {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  border-radius: 9999px;
+}
+
+.map-floating-controls {
+  position: absolute;
+  top: 12px;
+  left: 52px;
+  z-index: 1000;
+  display: flex;
+  gap: 0.4rem;
+}
+
+/* Toast Notifications (non-blocking alert replacement) */
+.toast-notification {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background-color: rgba(15, 23, 42, 0.96);
+  border: 1px solid #10b981;
+  color: #6ee7b7;
+  padding: 0.75rem 1.4rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+  z-index: 9999;
+  opacity: 0;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+  max-width: 90vw;
+  text-align: center;
+}
+
+.toast-notification.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
 }

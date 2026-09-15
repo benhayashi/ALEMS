@@ -42,11 +42,14 @@ function initMap(homeConfig, airportConfig) {
     attributionControl: false
   });
 
-  // Base Map Layer 1: Dark Radar Canvas (Carto Dark, free public tile access)
-  const darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    subdomains: 'abcd'
+  // Base Map Layer 1: Esri World Dark Gray Canvas (100% Free, zero API key, no watermark)
+  const esriDarkBase = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 16
   });
+  const esriDarkRef = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 16
+  });
+  const darkLayer = L.layerGroup([esriDarkBase, esriDarkRef]);
 
   // Base Map Layer 2: OpenStreetMap Standard (100% Free, zero API key)
   const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -57,18 +60,23 @@ function initMap(homeConfig, airportConfig) {
   const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     maxZoom: 19
   });
+  const satelliteLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19
+  });
+  const satLayerGroup = L.layerGroup([satelliteLayer, satelliteLabels]);
 
+  // Default to Dark Radar layer
   darkLayer.addTo(map);
 
   baseLayers = {
     "Dark Radar": darkLayer,
     "Street Map (OSM)": osmLayer,
-    "Satellite Imagery": satelliteLayer
+    "Satellite Imagery": satLayerGroup
   };
 
   layerControl = L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
 
-  // Click on map listener for Pin Drop Mode
+  // Click / tap on map listener for Pin Drop Mode
   map.on('click', (e) => {
     if (isPinDropMode) {
       setHomeLocation(e.latlng.lat, e.latlng.lng);
@@ -141,38 +149,84 @@ function drawHomeMarker(homeConfig) {
 }
 
 function setHomeLocation(lat, lon) {
+  const roundedLat = parseFloat(lat.toFixed(6));
+  const roundedLon = parseFloat(lon.toFixed(6));
+
   const latInput = document.getElementById('setting-home-lat');
   const lonInput = document.getElementById('setting-home-lon');
-  if (latInput) latInput.value = lat.toFixed(6);
-  if (lonInput) lonInput.value = lon.toFixed(6);
+  if (latInput) latInput.value = roundedLat;
+  if (lonInput) lonInput.value = roundedLon;
 
   if (homeMarker) {
-    homeMarker.setLatLng([lat, lon]);
+    homeMarker.setLatLng([roundedLat, roundedLon]);
+  } else {
+    drawHomeMarker({ lat: roundedLat, lon: roundedLon });
   }
-  drawProximityRings(lat, lon);
+  drawProximityRings(roundedLat, roundedLon);
 
-  // Switch to settings tab or show notification badge
-  const alertEl = document.getElementById('location-changed-alert');
-  if (alertEl) {
-    alertEl.style.display = 'block';
-  }
+  // Auto-save via API so the user doesn't even need to click save
+  fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      home_lat: roundedLat,
+      home_lon: roundedLon
+    })
+  }).then(r => r.json()).then(res => {
+    if (res.config && typeof applyConfigToUI === 'function') {
+      applyConfigToUI(res.config);
+    }
+    if (typeof showToast === 'function') {
+      showToast(`📍 Property location set to: ${roundedLat}, ${roundedLon}`);
+    }
+  }).catch(err => {
+    console.error("Failed to auto-save location:", err);
+  });
 }
 
 function togglePinDropMode(enable) {
   isPinDropMode = (enable !== undefined) ? enable : !isPinDropMode;
-  const btn = document.getElementById('pin-drop-btn');
-  if (btn) {
+
+  const radarPane = document.getElementById('tab-radar');
+  const banner = document.getElementById('pin-drop-banner');
+
+  if (isPinDropMode) {
+    // 1. Immediately switch to radar map tab so user actually sees the map
+    if (typeof switchTab === 'function') {
+      switchTab('tab-radar');
+    }
+
+    // 2. On mobile & desktop, expand map to 100% full screen and hide sidebar clutter
+    if (radarPane) radarPane.classList.add('pin-drop-active');
+
+    // 3. Show floating prompt banner over map
+    if (banner) banner.style.display = 'flex';
+
+    if (map) {
+      map.getContainer().style.cursor = 'crosshair';
+      setTimeout(() => map.invalidateSize(), 150);
+    }
+  } else {
+    if (radarPane) radarPane.classList.remove('pin-drop-active');
+    if (banner) banner.style.display = 'none';
+
+    if (map) {
+      map.getContainer().style.cursor = '';
+      setTimeout(() => map.invalidateSize(), 150);
+    }
+  }
+
+  // Update button texts
+  const btns = document.querySelectorAll('.btn-pin-drop');
+  btns.forEach(btn => {
     if (isPinDropMode) {
       btn.classList.add('btn-primary');
-      btn.textContent = "Click Anywhere on Map to Place Pin";
+      btn.textContent = "Cancel Pin Drop";
     } else {
       btn.classList.remove('btn-primary');
       btn.textContent = "Drop Pin on Map";
     }
-  }
-  if (map) {
-    map.getContainer().style.cursor = isPinDropMode ? 'crosshair' : '';
-  }
+  });
 }
 
 function drawProximityRings(lat, lon) {

@@ -6,8 +6,28 @@
 let appConfig = null;
 let ws = null;
 let reconnectTimer = null;
+let httpPollTimer = null;
 let currentAircraftList = [];
 let allEventsList = [];
+let latestWeather = {};
+
+// Lightweight, non-blocking toast notification helper
+function showToast(message, isError = false) {
+  let toast = document.getElementById('toast-notification');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toast-notification';
+    toast.className = 'toast-notification';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.style.borderColor = isError ? '#ef4444' : '#10b981';
+  toast.style.color = isError ? '#fca5a5' : '#6ee7b7';
+  toast.classList.add('show');
+  setTimeout(() => {
+    toast.classList.remove('show');
+  }, 4000);
+}
 
 // Safe Tab Switching function (available globally)
 function switchTab(tabId) {
@@ -151,18 +171,93 @@ function applyConfigToUI(cfg) {
   const simToggle = document.getElementById('setting-sim-toggle');
   if (simToggle) simToggle.checked = cfg.simulation_mode || false;
 
-  const readsbInput = document.getElementById('setting-readsb-url');
-  if (readsbInput && cfg.endpoints) readsbInput.value = cfg.endpoints.readsb_url || '';
+  // ADS-B Hardware Inputs
+  const readsbUrl = document.getElementById('setting-readsb-url');
+  if (readsbUrl && cfg.endpoints) readsbUrl.value = cfg.endpoints.readsb_url || '';
+
+  const readsbHost = document.getElementById('setting-readsb-host');
+  if (readsbHost && cfg.endpoints) readsbHost.value = cfg.endpoints.readsb_host || '';
+
+  const readsbPort = document.getElementById('setting-readsb-port');
+  if (readsbPort && cfg.endpoints) readsbPort.value = cfg.endpoints.readsb_port || 80;
+
+  const readsbPath = document.getElementById('setting-readsb-path');
+  if (readsbPath && cfg.endpoints) readsbPath.value = cfg.endpoints.readsb_path || '/tar1090/data/aircraft.json';
+
+  // Weather Hardware Inputs
+  const weatherProvider = document.getElementById('setting-weather-provider');
+  if (weatherProvider && cfg.endpoints) {
+    weatherProvider.value = cfg.endpoints.weather_provider || 'ecowitt_local';
+    updateWeatherPanels(weatherProvider.value);
+  }
+
+  const ecowittIp = document.getElementById('setting-ecowitt-ip');
+  if (ecowittIp && cfg.endpoints) ecowittIp.value = cfg.endpoints.ecowitt_ip || '';
+
+  const ecowittPort = document.getElementById('setting-ecowitt-port');
+  if (ecowittPort && cfg.endpoints) ecowittPort.value = cfg.endpoints.ecowitt_port || 80;
 
   const hassInput = document.getElementById('setting-hass-url');
   if (hassInput && cfg.endpoints) hassInput.value = cfg.endpoints.hass_url || '';
+
+  const pushIpEl = document.getElementById('push-server-ip');
+  if (pushIpEl) {
+    pushIpEl.textContent = window.location.hostname;
+  }
+}
+
+function updateWeatherPanels(selectedProvider) {
+  const pEcowittLocal = document.getElementById('panel-weather-ecowitt-local');
+  const pEcowittPush = document.getElementById('panel-weather-ecowitt-push');
+  const pHass = document.getElementById('panel-weather-homeassistant');
+
+  if (pEcowittLocal) pEcowittLocal.style.display = (selectedProvider === 'ecowitt_local') ? 'block' : 'none';
+  if (pEcowittPush) pEcowittPush.style.display = (selectedProvider === 'ecowitt_push') ? 'block' : 'none';
+  if (pHass) pHass.style.display = (selectedProvider === 'homeassistant') ? 'block' : 'none';
+}
+
+function startHttpPolling() {
+  if (httpPollTimer) return;
+  fetchLiveAircraftHttp();
+  httpPollTimer = setInterval(fetchLiveAircraftHttp, 2500);
+}
+
+function stopHttpPolling() {
+  if (httpPollTimer) {
+    clearInterval(httpPollTimer);
+    httpPollTimer = null;
+  }
+}
+
+async function fetchLiveAircraftHttp() {
+  try {
+    const resp = await fetch('/api/aircraft');
+    if (resp.ok) {
+      const data = await resp.json();
+      const statusDot = document.getElementById('ws-status-dot');
+      const statusText = document.getElementById('ws-status-text');
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        if (statusDot) statusDot.style.backgroundColor = '#10b981';
+        if (statusText) statusText.textContent = 'ONLINE';
+      }
+      handleSnapshot(data);
+    }
+  } catch (e) {
+    console.warn("HTTP polling error:", e);
+  }
 }
 
 function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}/ws`;
 
-  ws = new WebSocket(wsUrl);
+  try {
+    ws = new WebSocket(wsUrl);
+  } catch (err) {
+    console.warn("WebSocket init error, falling back to HTTP sync:", err);
+    startHttpPolling();
+    return;
+  }
 
   ws.onopen = () => {
     console.log("[*] WebSocket connected to ALEMS daemon");
@@ -170,7 +265,11 @@ function connectWebSocket() {
     const statusText = document.getElementById('ws-status-text');
     if (statusDot) statusDot.style.backgroundColor = '#10b981';
     if (statusText) statusText.textContent = 'ONLINE';
-    if (reconnectTimer) clearInterval(reconnectTimer);
+    if (reconnectTimer) {
+      clearInterval(reconnectTimer);
+      reconnectTimer = null;
+    }
+    stopHttpPolling();
   };
 
   ws.onmessage = (event) => {
@@ -192,16 +291,16 @@ function connectWebSocket() {
     }
   };
 
-  ws.onclose = () => {
-    const statusDot = document.getElementById('ws-status-dot');
-    const statusText = document.getElementById('ws-status-text');
-    if (statusDot) statusDot.style.backgroundColor = '#ef4444';
-    if (statusText) statusText.textContent = 'RECONNECTING';
+  ws.onerror = () => {
+    startHttpPolling();
+  };
 
+  ws.onclose = () => {
+    startHttpPolling();
     if (!reconnectTimer) {
       reconnectTimer = setInterval(() => {
         connectWebSocket();
-      }, 3000);
+      }, 4000);
     }
   };
 }
@@ -209,17 +308,58 @@ function connectWebSocket() {
 function handleSnapshot(data) {
   currentAircraftList = data.aircraft || [];
   const weather = data.weather || {};
+  latestWeather = weather;
 
-  // 1. Update Map Markers & Plume Cones
-  if (typeof updateAircraftMarkers === 'function') {
-    updateAircraftMarkers(currentAircraftList, weather);
+  // 1. Update Header ADS-B Receiver Status Badge
+  const adsbDot = document.getElementById('adsb-status-dot');
+  const adsbText = document.getElementById('adsb-status-text');
+  const isConnected = data.adsb_connected !== false;
+  const totalCount = data.total_count !== undefined ? data.total_count : currentAircraftList.length;
+  const geoCount = data.geofence_count !== undefined ? data.geofence_count : currentAircraftList.filter(a => a.in_geofence).length;
+
+  if (adsbDot) adsbDot.style.backgroundColor = isConnected ? '#10b981' : '#ef4444';
+  if (adsbText) {
+    adsbText.textContent = isConnected ? `ADS-B: CONNECTED (${totalCount})` : `ADS-B: OFFLINE`;
   }
 
-  // 2. Update Sidebar Active Aircraft Cards
-  updateAircraftSidebar(currentAircraftList);
+  // 2. Update geofence summary text
+  const geoSummary = document.getElementById('radar-geofence-summary');
+  if (geoSummary) {
+    geoSummary.textContent = `${geoCount} within 3.5 NM`;
+    geoSummary.style.color = geoCount > 0 ? '#ef4444' : '#94a3b8';
+  }
 
-  // 3. Update Weather Cards
+  // 3. Render filtered aircraft on map and sidebar
+  renderFilteredAircraft();
+
+  // 4. Update Weather Cards
   updateWeatherUI(weather);
+}
+
+function onRadarScopeChange() {
+  renderFilteredAircraft();
+}
+
+function renderFilteredAircraft() {
+  const scopeSelect = document.getElementById('radar-scope-select');
+  const scope = scopeSelect ? scopeSelect.value : 'all';
+  const leadedOnly = document.getElementById('radar-filter-leaded')?.checked || false;
+
+  let filtered = currentAircraftList;
+  if (scope === 'geofence') {
+    filtered = filtered.filter(a => a.in_geofence);
+  }
+  if (leadedOnly) {
+    filtered = filtered.filter(a => a.aircraft_meta && a.aircraft_meta.is_leaded);
+  }
+
+  // Update map markers
+  if (typeof updateAircraftMarkers === 'function') {
+    updateAircraftMarkers(filtered, latestWeather);
+  }
+
+  // Update sidebar list
+  updateAircraftSidebar(filtered, scope, leadedOnly);
 }
 
 function handleNewEvent(eventRecord) {
@@ -267,7 +407,7 @@ function updateWeatherUI(weather) {
   }
 }
 
-function updateAircraftSidebar(list) {
+function updateAircraftSidebar(list, scope = 'all', leadedOnly = false) {
   const container = document.getElementById('sidebar-aircraft-list');
   const countBadge = document.getElementById('sidebar-aircraft-count');
   if (!container) return;
@@ -275,9 +415,16 @@ function updateAircraftSidebar(list) {
   if (countBadge) countBadge.textContent = list.length;
 
   if (list.length === 0) {
+    const totalTracked = currentAircraftList.length;
+    let hint = `No aircraft currently in view.`;
+    if (scope === 'geofence') {
+      hint = `No aircraft currently within 3.5 NM house geofence (${totalTracked} active in regional coverage). Select "All Regional Traffic" above to inspect all flights.`;
+    } else if (leadedOnly) {
+      hint = `No 100LL leaded piston aircraft currently detected (${totalTracked} total active flights). Uncheck "100LL Leaded Only" to see commercial & turbine traffic.`;
+    }
     container.innerHTML = `
-      <div style="text-align: center; color: #64748b; padding: 2rem 1rem; font-size: 0.85rem;">
-        No aircraft currently within geofence (3.5 NM).
+      <div style="text-align: center; color: #64748b; padding: 2rem 1rem; font-size: 0.85rem; line-height: 1.5;">
+        ${hint}
       </div>
     `;
     return;
@@ -288,22 +435,26 @@ function updateAircraftSidebar(list) {
     const disp = ac.dispersion || {};
     const isLeaded = meta.is_leaded;
     const isDownwind = disp.is_downwind;
+    const inGeo = ac.in_geofence;
 
     return `
-      <div class="aircraft-item ${isLeaded ? 'leaded' : 'turbine'}">
+      <div class="aircraft-item ${isLeaded ? 'leaded' : 'turbine'}" style="${inGeo ? 'border-left: 4px solid #ef4444; background: rgba(239, 68, 68, 0.08);' : ''}">
         <div class="ac-top-row">
-          <span class="ac-callsign">${ac.flight || meta.tail_number || ac.hex}</span>
+          <span class="ac-callsign" style="${inGeo ? 'color: #fca5a5; font-weight: 800;' : ''}">
+            ${ac.flight || meta.tail_number || ac.hex}
+            ${inGeo ? '<span style="font-size: 0.65rem; background: #ef4444; color: #fff; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">GEOFENCE</span>' : ''}
+          </span>
           <span class="ac-type-badge ${isLeaded ? 'type-100ll' : 'type-jeta'}">
-            ${meta.fuel_type} (${meta.icao_type})
+            ${meta.fuel_type || '100LL'} (${meta.icao_type || 'UNKNOWN'})
           </span>
         </div>
         <div style="font-size: 0.72rem; color: #cbd5e1; margin-bottom: 0.35rem;">
-          ${meta.model_name}
+          ${meta.model_name || 'Aircraft'}
         </div>
         <div class="ac-metrics">
           <div>
-            <div style="font-size: 0.65rem; color: #64748b;">SLANT DIST</div>
-            <div class="ac-metric-val">${ac.slant_range_ft ? ac.slant_range_ft.toLocaleString() : '--'} ft</div>
+            <div style="font-size: 0.65rem; color: #64748b;">DISTANCE</div>
+            <div class="ac-metric-val">${ac.dist_nm} NM</div>
           </div>
           <div>
             <div style="font-size: 0.65rem; color: #64748b;">ALT AGL</div>
@@ -424,21 +575,37 @@ function setupSettingsHandlers() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ simulation_mode: active })
       });
-      console.log(`Simulation mode set to: ${active}`);
+      showToast(`Simulation mode ${active ? 'enabled' : 'disabled'}`);
     });
   }
 
-  // 2. Geocode Address Button
+  // 2. Weather Provider Selector change
+  const weatherProviderSelect = document.getElementById('setting-weather-provider');
+  if (weatherProviderSelect) {
+    weatherProviderSelect.addEventListener('change', (e) => {
+      updateWeatherPanels(e.target.value);
+    });
+  }
+
+  // 3. Geocode Address Button (Non-blocking inline feedback)
   const geocodeBtn = document.getElementById('geocode-addr-btn');
+  const geocodeMsg = document.getElementById('geocode-status-msg');
   if (geocodeBtn) {
     geocodeBtn.addEventListener('click', async () => {
       const addr = document.getElementById('setting-home-address').value.trim();
       if (!addr) {
-        alert("Please enter a street address to search.");
+        if (geocodeMsg) {
+          geocodeMsg.style.display = 'block';
+          geocodeMsg.style.background = 'rgba(239, 68, 68, 0.15)';
+          geocodeMsg.style.color = '#fca5a5';
+          geocodeMsg.textContent = 'Please enter a street address to search.';
+        }
         return;
       }
       geocodeBtn.disabled = true;
       geocodeBtn.textContent = "Geocoding...";
+      if (geocodeMsg) geocodeMsg.style.display = 'none';
+
       try {
         const resp = await fetch(`/api/geocode?query=${encodeURIComponent(addr)}`);
         if (resp.ok) {
@@ -451,12 +618,28 @@ function setupSettingsHandlers() {
           if (typeof setHomeLocation === 'function') {
             setHomeLocation(data.lat, data.lon);
           }
-          alert(`Address found!\nLat: ${data.lat}, Lon: ${data.lon}`);
+          if (geocodeMsg) {
+            geocodeMsg.style.display = 'block';
+            geocodeMsg.style.background = 'rgba(16, 185, 129, 0.15)';
+            geocodeMsg.style.color = '#6ee7b7';
+            geocodeMsg.textContent = `✓ Located (${data.source}): Lat ${data.lat}, Lon ${data.lon}`;
+          }
+          showToast(`📍 Found: ${data.lat}, ${data.lon}`);
         } else {
-          alert(`Could not geocode address: "${addr}". Please check the spelling or enter coordinates directly.`);
+          if (geocodeMsg) {
+            geocodeMsg.style.display = 'block';
+            geocodeMsg.style.background = 'rgba(239, 68, 68, 0.15)';
+            geocodeMsg.style.color = '#fca5a5';
+            geocodeMsg.textContent = `Could not resolve "${addr}". Try street + ZIP (e.g. "44081 Beaver Creek Dr, 20619") or click "Drop Pin on Map".`;
+          }
         }
       } catch (err) {
-        alert(`Geocoding request failed: ${err.message}`);
+        if (geocodeMsg) {
+          geocodeMsg.style.display = 'block';
+          geocodeMsg.style.background = 'rgba(239, 68, 68, 0.15)';
+          geocodeMsg.style.color = '#fca5a5';
+          geocodeMsg.textContent = `Geocoding request failed: ${err.message}`;
+        }
       } finally {
         geocodeBtn.disabled = false;
         geocodeBtn.textContent = "Find & Geocode";
@@ -464,17 +647,25 @@ function setupSettingsHandlers() {
     });
   }
 
-  // 3. Airport Lookup Button
+  // 4. Airport Lookup Button (Non-blocking inline feedback)
   const airportBtn = document.getElementById('lookup-airport-btn');
+  const airportMsg = document.getElementById('airport-status-msg');
   if (airportBtn) {
     airportBtn.addEventListener('click', async () => {
       const code = document.getElementById('setting-airport-id').value.trim();
       if (!code) {
-        alert("Please enter an airport code (e.g. 2W6, KRHV, KSMO, KGAI).");
+        if (airportMsg) {
+          airportMsg.style.display = 'block';
+          airportMsg.style.background = 'rgba(239, 68, 68, 0.15)';
+          airportMsg.style.color = '#fca5a5';
+          airportMsg.textContent = 'Please enter an airport code (e.g. 2W6, KRHV, KSMO, KGAI).';
+        }
         return;
       }
       airportBtn.disabled = true;
       airportBtn.textContent = "Looking up...";
+      if (airportMsg) airportMsg.style.display = 'none';
+
       try {
         const resp = await fetch(`/api/airport/lookup?code=${encodeURIComponent(code)}`);
         if (resp.ok) {
@@ -497,12 +688,28 @@ function setupSettingsHandlers() {
               runway_length_ft: apt.runway_length_ft
             });
           }
-          alert(`Airport loaded: ${apt.name} (${apt.id})\nRunway: ${apt.runway_heading_1}° / ${apt.runway_heading_2}°`);
+          if (airportMsg) {
+            airportMsg.style.display = 'block';
+            airportMsg.style.background = 'rgba(16, 185, 129, 0.15)';
+            airportMsg.style.color = '#6ee7b7';
+            airportMsg.textContent = `✓ Loaded: ${apt.name} (${apt.id}) - Rwy ${apt.runway_heading_1}° / ${apt.runway_heading_2}°`;
+          }
+          showToast(`✈️ Loaded airfield: ${apt.id}`);
         } else {
-          alert(`Airport code "${code}" not found. You can enter the coordinates and runway headings manually below.`);
+          if (airportMsg) {
+            airportMsg.style.display = 'block';
+            airportMsg.style.background = 'rgba(239, 68, 68, 0.15)';
+            airportMsg.style.color = '#fca5a5';
+            airportMsg.textContent = `Airport code "${code}" not found. You can enter runway headings manually below.`;
+          }
         }
       } catch (err) {
-        alert(`Airport lookup failed: ${err.message}`);
+        if (airportMsg) {
+          airportMsg.style.display = 'block';
+          airportMsg.style.background = 'rgba(239, 68, 68, 0.15)';
+          airportMsg.style.color = '#fca5a5';
+          airportMsg.textContent = `Airport lookup failed: ${err.message}`;
+        }
       } finally {
         airportBtn.disabled = false;
         airportBtn.textContent = "Lookup Airport";
@@ -510,7 +717,107 @@ function setupSettingsHandlers() {
     });
   }
 
-  // 4. Save & Apply Configuration Button
+  // 5. Test ADS-B Connection Button
+  const testAdsbBtn = document.getElementById('test-readsb-btn');
+  const adsbStatus = document.getElementById('readsb-test-status');
+  if (testAdsbBtn) {
+    testAdsbBtn.addEventListener('click', async () => {
+      const host = document.getElementById('setting-readsb-host')?.value.trim();
+      const port = document.getElementById('setting-readsb-port')?.value.trim();
+      const path = document.getElementById('setting-readsb-path')?.value.trim();
+      const url = document.getElementById('setting-readsb-url')?.value.trim();
+
+      testAdsbBtn.disabled = true;
+      testAdsbBtn.textContent = "Testing...";
+      if (adsbStatus) adsbStatus.style.display = 'none';
+
+      try {
+        let q = `/api/test/readsb?`;
+        if (url) q += `url=${encodeURIComponent(url)}`;
+        else q += `host=${encodeURIComponent(host || 'localhost')}&port=${encodeURIComponent(port || '80')}&path=${encodeURIComponent(path || '/tar1090/data/aircraft.json')}`;
+
+        const resp = await fetch(q);
+        const data = await resp.json();
+        if (adsbStatus) {
+          adsbStatus.style.display = 'block';
+          if (data.success) {
+            adsbStatus.style.background = 'rgba(16, 185, 129, 0.15)';
+            adsbStatus.style.color = '#6ee7b7';
+            adsbStatus.textContent = `✓ Connected! ${data.aircraft_count} aircraft currently tracked (${data.latency_ms} ms latency)`;
+            showToast(`✓ ADS-B connected: ${data.aircraft_count} aircraft`);
+          } else {
+            adsbStatus.style.background = 'rgba(239, 68, 68, 0.15)';
+            adsbStatus.style.color = '#fca5a5';
+            adsbStatus.textContent = `✗ Connection failed to ${data.url}: ${data.error}`;
+          }
+        }
+      } catch (err) {
+        if (adsbStatus) {
+          adsbStatus.style.display = 'block';
+          adsbStatus.style.background = 'rgba(239, 68, 68, 0.15)';
+          adsbStatus.style.color = '#fca5a5';
+          adsbStatus.textContent = `Network error: ${err.message}`;
+        }
+      } finally {
+        testAdsbBtn.disabled = false;
+        testAdsbBtn.textContent = "Test Connection";
+      }
+    });
+  }
+
+  // 6. Test Ecowitt Gateway Button
+  const testEcoBtn = document.getElementById('test-ecowitt-btn');
+  const ecoStatus = document.getElementById('ecowitt-test-status');
+  if (testEcoBtn) {
+    testEcoBtn.addEventListener('click', async () => {
+      const ip = document.getElementById('setting-ecowitt-ip')?.value.trim();
+      const port = document.getElementById('setting-ecowitt-port')?.value.trim();
+
+      if (!ip) {
+        if (ecoStatus) {
+          ecoStatus.style.display = 'block';
+          ecoStatus.style.background = 'rgba(239, 68, 68, 0.15)';
+          ecoStatus.style.color = '#fca5a5';
+          ecoStatus.textContent = "Please enter your Ecowitt gateway's local IP address (e.g. 192.168.1.150).";
+        }
+        return;
+      }
+
+      testEcoBtn.disabled = true;
+      testEcoBtn.textContent = "Pinging...";
+      if (ecoStatus) ecoStatus.style.display = 'none';
+
+      try {
+        const resp = await fetch(`/api/test/ecowitt?ip=${encodeURIComponent(ip)}&port=${encodeURIComponent(port || '80')}`);
+        const data = await resp.json();
+        if (ecoStatus) {
+          ecoStatus.style.display = 'block';
+          if (data.success) {
+            ecoStatus.style.background = 'rgba(16, 185, 129, 0.15)';
+            ecoStatus.style.color = '#6ee7b7';
+            ecoStatus.textContent = `✓ Connected to Ecowitt gateway! Responded in ${data.latency_ms} ms with live sensor feed.`;
+            showToast(`✓ Ecowitt gateway online (${data.latency_ms} ms)`);
+          } else {
+            ecoStatus.style.background = 'rgba(239, 68, 68, 0.15)';
+            ecoStatus.style.color = '#fca5a5';
+            ecoStatus.textContent = `✗ Cannot connect to ${data.url}: ${data.error}. Check that gateway IP is correct and on the same Wi-Fi.`;
+          }
+        }
+      } catch (err) {
+        if (ecoStatus) {
+          ecoStatus.style.display = 'block';
+          ecoStatus.style.background = 'rgba(239, 68, 68, 0.15)';
+          ecoStatus.style.color = '#fca5a5';
+          ecoStatus.textContent = `Network error: ${err.message}`;
+        }
+      } finally {
+        testEcoBtn.disabled = false;
+        testEcoBtn.textContent = "Test Gateway";
+      }
+    });
+  }
+
+  // 7. Save & Apply Configuration Button
   const saveBtn = document.getElementById('save-settings-btn');
   if (saveBtn) {
     saveBtn.addEventListener('click', async () => {
@@ -527,6 +834,12 @@ function setupSettingsHandlers() {
         runway_heading_1: parseFloat(document.getElementById('setting-runway-hdg1')?.value) || undefined,
         runway_heading_2: parseFloat(document.getElementById('setting-runway-hdg2')?.value) || undefined,
         readsb_url: document.getElementById('setting-readsb-url')?.value.trim() || undefined,
+        readsb_host: document.getElementById('setting-readsb-host')?.value.trim() || undefined,
+        readsb_port: parseInt(document.getElementById('setting-readsb-port')?.value) || undefined,
+        readsb_path: document.getElementById('setting-readsb-path')?.value.trim() || undefined,
+        weather_provider: document.getElementById('setting-weather-provider')?.value || undefined,
+        ecowitt_ip: document.getElementById('setting-ecowitt-ip')?.value.trim() || undefined,
+        ecowitt_port: parseInt(document.getElementById('setting-ecowitt-port')?.value) || undefined,
         hass_url: document.getElementById('setting-hass-url')?.value.trim() || undefined,
         hass_token: document.getElementById('setting-hass-token')?.value.trim() || undefined
       };
@@ -547,12 +860,12 @@ function setupSettingsHandlers() {
           if (typeof recenterAndRedraw === 'function') {
             recenterAndRedraw(appConfig.home, appConfig.airport);
           }
-          alert("Configuration saved & applied successfully!\nRadar map and monitoring geofence have been updated.");
+          showToast("✓ Configuration saved & applied successfully!");
         } else {
-          alert("Error saving configuration. Please check the values entered.");
+          showToast("Error saving configuration. Please check values.", true);
         }
       } catch (err) {
-        alert(`Failed to save configuration: ${err.message}`);
+        showToast(`Failed to save: ${err.message}`, true);
       } finally {
         saveBtn.disabled = false;
         saveBtn.textContent = "Save & Apply Configuration";
@@ -560,9 +873,38 @@ function setupSettingsHandlers() {
     });
   }
 
-  // 5. Filter checkbox on logs table
+  // 8. Filter checkbox on logs table
   const filterCheckbox = document.getElementById('filter-leaded-only');
   if (filterCheckbox) {
     filterCheckbox.addEventListener('change', () => refreshEvents());
   }
 }
+
+async function clearAllLogs() {
+  if (!confirm("Are you sure you want to purge all recorded flight logs and track history? This will reset logs to start clean with live data.")) {
+    return;
+  }
+  try {
+    const resp = await fetch('/api/events/clear', { method: 'POST' });
+    const data = await resp.json();
+    if (data.status === 'success') {
+      showToast(`✓ Cleared ${data.purged_count} flyover log records`);
+      allEventsList = [];
+      renderEventsTable([]);
+      refreshStats();
+      const badge = document.getElementById('nav-logs-badge');
+      if (badge) {
+        badge.textContent = '0';
+        badge.style.display = 'none';
+      }
+    }
+  } catch (err) {
+    showToast(`Error clearing logs: ${err.message}`, true);
+  }
+}
+
+// Attach globally for inline HTML event attributes
+window.onRadarScopeChange = onRadarScopeChange;
+window.renderFilteredAircraft = renderFilteredAircraft;
+window.clearAllLogs = clearAllLogs;
+window.refreshEvents = refreshEvents;

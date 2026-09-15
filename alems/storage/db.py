@@ -253,4 +253,15 @@ class Database:
                 "top_leaded_aircraft": top_types
             }
 
+    def clear_all_events(self) -> int:
+        """Purge all recorded flyover events and high-frequency track points."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM flyover_events")
+            count = c.fetchone()[0]
+            conn.execute("DELETE FROM track_points;")
+            conn.execute("DELETE FROM flyover_events;")
+            conn.commit()
+            return count
+
 db = Database()
