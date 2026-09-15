@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  alems:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: alems:latest
+    container_name: alems-lead-monitor
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    environment:
+      - ALEMS_HOST=0.0.0.0
+      - ALEMS_PORT=8085
+      # Optional initial overrides (settings can also be changed anytime in the Web GUI):
+      # - HOME_ADDRESS=44081 Beaver Creek Dr, California, MD 20619
+      # - HOME_LAT=38.2720
+      # - HOME_LON=-76.4950
+      # - READSB_URL=http://192.168.1.100/tar1090/data/aircraft.json
+      # - HASS_URL=http://homeassistant.local:8123
+      # - HASS_TOKEN=your_token_here
+    volumes:
+      - ./data:/app/data
+      - ./exports:/app/exports

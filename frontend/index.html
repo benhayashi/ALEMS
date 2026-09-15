@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0f172a">
+  <title>ALEMS - Aerial Lead Exposure Monitoring System</title>
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- Top Header -->
+  <header>
+    <div class="logo-container">
+      <div class="logo-icon">Pb</div>
+      <div class="logo-text">
+        <h1>ALEMS</h1>
+        <p>100LL Aircraft Lead Monitor</p>
+      </div>
+    </div>
+
+    <div class="header-badges">
+      <div class="badge badge-lead" id="header-address">
+        44081 Beaver Creek Dr
+      </div>
+      <div class="badge badge-cyan">
+        2W6: 3.7 NM (Rwy 11/29)
+      </div>
+      <div class="badge badge-green">
+        <span class="pulse-dot" id="ws-status-dot"></span>
+        <span id="ws-status-text">ONLINE</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tab Bar -->
+  <nav class="tab-bar">
+    <button class="tab-btn active" data-tab="tab-radar">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 12l7-4"/></svg>
+      <span>Live Radar</span>
+    </button>
+    <button class="tab-btn" data-tab="tab-logs">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      <span>Flight Logs</span>
+      <span class="badge badge-lead" id="nav-logs-badge" style="display: none; padding: 1px 5px; font-size: 0.65rem;">0</span>
+    </button>
+    <button class="tab-btn" data-tab="tab-analytics">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span>Risk Analytics</span>
+    </button>
+    <button class="tab-btn" data-tab="tab-settings">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>Settings</span>
+    </button>
+  </nav>
+
+  <!-- Main Viewports -->
+  <main>
+    <!-- TAB 1: Radar & Map -->
+    <div class="tab-pane active" id="tab-radar">
+      <div id="map-container">
+        <div id="map"></div>
+      </div>
+
+      <div class="radar-sidebar">
+        <!-- Dual Layer Weather Card -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+              Wind & Lead Plume
+            </span>
+            <span class="badge badge-cyan" id="weather-plume-dir">--° (Plume Drift)</span>
+          </div>
+
+          <div class="weather-grid">
+            <div class="weather-cell">
+              <div class="weather-cell-title">Ground (Ecowitt)</div>
+              <div class="weather-cell-val" id="weather-ecowitt-speed">-- mph</div>
+              <div class="weather-sub">Dir: <span id="weather-ecowitt-dir">--°</span> | <span id="weather-ecowitt-gust">Gust --</span></div>
+              <div class="weather-sub" style="color: #64748b;">Below Tree Line</div>
+            </div>
+
+            <div class="weather-cell">
+              <div class="weather-cell-title" id="weather-aero-station">Aerodrome (2W6/NHK)</div>
+              <div class="weather-cell-val" id="weather-aero-speed">-- kts</div>
+              <div class="weather-sub">Dir: <span id="weather-aero-dir">--°</span></div>
+              <div class="weather-sub" style="color: #38bdf8;">10m Standard Mast</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Aircraft in Geofence Card -->
+        <div class="card" style="flex: 1; overflow-y: auto;">
+          <div class="card-header">
+            <span class="card-title">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>
+              Aircraft In Range (<span id="sidebar-aircraft-count">0</span>)
+            </span>
+            <span style="font-size: 0.7rem; color: #94a3b8;">Max 3.5 NM</span>
+          </div>
+
+          <div id="sidebar-aircraft-list">
+            <div style="text-align: center; color: #64748b; padding: 2rem 1rem; font-size: 0.85rem;">
+              Listening for ADS-B signals from readsb...
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: Flyover Corroboration Logs -->
+    <div class="tab-pane" id="tab-logs">
+      <div class="table-toolbar">
+        <div class="filter-group">
+          <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; font-weight: 600; cursor: pointer;">
+            <input type="checkbox" id="filter-leaded-only" checked>
+            100LL Piston Aircraft Only
+          </label>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn btn-secondary" onclick="refreshEvents()">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            Refresh
+          </button>
+          <button class="btn btn-primary" onclick="downloadAuditCsv(document.getElementById('filter-leaded-only').checked)">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>CPA Time (Local)</th>
+              <th>Tail / Hex</th>
+              <th>Type / Model</th>
+              <th>Fuel & Engine</th>
+              <th>Min Slant Dist</th>
+              <th>Alt AGL</th>
+              <th>Speed</th>
+              <th>Local Wind</th>
+              <th>Downwind?</th>
+              <th>Lead Risk</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="events-table-body">
+            <!-- Populated via JavaScript -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 3: Lead Risk Analytics -->
+    <div class="tab-pane" id="tab-analytics">
+      <div class="analytics-stat-grid">
+        <div class="stat-card">
+          <div class="stat-title">Total Monitored Passes</div>
+          <div class="stat-value" id="stat-total-flyovers">0</div>
+          <div class="stat-desc">Within 1.5 NM proximity</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-title">100LL Piston Passes</div>
+          <div class="stat-value" id="stat-leaded-flyovers" style="color: #fca5a5;">0</div>
+          <div class="stat-desc">Emitting leaded avgas</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-title">Downwind Plume Events</div>
+          <div class="stat-value" id="stat-downwind-events" style="color: #fcd34d;">0</div>
+          <div class="stat-desc">Property directly in plume</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-title">Closest Slant Range</div>
+          <div class="stat-value" id="stat-min-slant">-- ft</div>
+          <div class="stat-desc">3D distance to property</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-title">Peak Exposure Score</div>
+          <div class="stat-value" id="stat-peak-risk" style="color: #ef4444;">0 / 100</div>
+          <div class="stat-desc">Calculated dispersion index</div>
+        </div>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="card-title">Hourly Flyovers & Exposure Trend</div>
+          <div class="chart-wrapper">
+            <canvas id="exposureChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="card-title">Fleet Fuel Type Breakdown</div>
+          <div class="chart-wrapper">
+            <canvas id="fleetChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: Hardware & Settings -->
+    <div class="tab-pane" id="tab-settings">
+      <!-- Monitored Property Location Card -->
+      <div class="card" style="border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 1.25rem;">
+        <div class="card-header">
+          <span class="card-title">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            Monitored Property Location
+          </span>
+          <button class="btn btn-secondary" id="pin-drop-btn" style="font-size: 0.75rem; padding: 0.25rem 0.6rem;" onclick="togglePinDropMode()">
+            Drop Pin on Map
+          </button>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Search Street Address</label>
+          <div style="display: flex; gap: 0.5rem;">
+            <input type="text" class="form-input" id="setting-home-address" placeholder="44081 Beaver Creek Dr, California, MD 20619">
+            <button class="btn btn-secondary" id="geocode-addr-btn" style="white-space: nowrap;">Find & Geocode</button>
+          </div>
+          <div class="form-hint">Uses free OpenStreetMap Nominatim service to resolve exact coordinates.</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem;">
+          <div class="form-group">
+            <label class="form-label">Latitude</label>
+            <input type="number" step="any" class="form-input" id="setting-home-lat" placeholder="38.272000">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Longitude</label>
+            <input type="number" step="any" class="form-input" id="setting-home-lon" placeholder="-76.495000">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Ground Elev (ft MSL)</label>
+            <input type="number" step="any" class="form-input" id="setting-home-elev" placeholder="110">
+          </div>
+        </div>
+      </div>
+
+      <!-- Target Airfield Location Card -->
+      <div class="card" style="border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 1.25rem;">
+        <div class="card-header">
+          <span class="card-title">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>
+            Target Airfield / Runway Setup
+          </span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Airport Code (ICAO / FAA)</label>
+          <div style="display: flex; gap: 0.5rem;">
+            <input type="text" class="form-input" id="setting-airport-id" placeholder="2W6, KRHV, KSMO, KGAI...">
+            <button class="btn btn-secondary" id="lookup-airport-btn" style="white-space: nowrap;">Lookup Airport</button>
+          </div>
+          <div class="form-hint">Lookup automatically fetches airport coordinates, elevation, and runway vectors.</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Airport Name</label>
+          <input type="text" class="form-input" id="setting-airport-name" placeholder="Captain Walter Francis Duke Regional Airport">
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.75rem;">
+          <div class="form-group">
+            <label class="form-label">Airport Lat</label>
+            <input type="number" step="any" class="form-input" id="setting-airport-lat" placeholder="38.315355">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Airport Lon</label>
+            <input type="number" step="any" class="form-input" id="setting-airport-lon" placeholder="-76.550116">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Airport Elev (ft MSL)</label>
+            <input type="number" step="any" class="form-input" id="setting-airport-elev" placeholder="142">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Runway 1 Heading (°)</label>
+            <input type="number" step="any" class="form-input" id="setting-runway-hdg1" placeholder="110">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Runway 2 Heading (°)</label>
+            <input type="number" step="any" class="form-input" id="setting-runway-hdg2" placeholder="290">
+          </div>
+        </div>
+      </div>
+
+      <!-- Hardware & Receivers Card -->
+      <div class="card" style="border: 1px solid var(--border-color); border-radius: 8px;">
+        <div class="card-header">
+          <span class="card-title">Hardware & Feed Configuration</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Raspberry Pi 4 readsb / tar1090 URL</label>
+          <input type="text" class="form-input" id="setting-readsb-url" placeholder="http://192.168.1.100/tar1090/data/aircraft.json">
+          <div class="form-hint">Address of your readsb JSON feed on your local home network.</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Home Assistant URL (Ecowitt Integration)</label>
+          <input type="text" class="form-input" id="setting-hass-url" placeholder="http://homeassistant.local:8123">
+          <div class="form-hint">Home Assistant endpoint providing Ecowitt weather sensor entities.</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Home Assistant Long-Lived Access Token</label>
+          <input type="password" class="form-input" id="setting-hass-token" placeholder="Bearer token...">
+          <div class="form-hint">Generated in Home Assistant under Profile -> Long-Lived Access Tokens.</div>
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 1.25rem 0;"/>
+
+        <div class="form-group">
+          <div class="toggle-container">
+            <input type="checkbox" id="setting-sim-toggle" style="width: 20px; height: 20px; cursor: pointer;">
+            <label for="setting-sim-toggle" class="form-label" style="margin-bottom: 0; cursor: pointer;">
+              Enable Local Traffic Pattern Simulator
+            </label>
+          </div>
+          <div class="form-hint">
+            Simulates realistic airfield touch-and-goes directly across your monitored property for testing without live planes.
+          </div>
+        </div>
+
+        <div style="margin-top: 1.25rem;">
+          <button class="btn btn-primary" id="save-settings-btn" style="padding: 0.6rem 1.4rem; font-size: 0.9rem;">
+            Save & Apply Configuration
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- JavaScript Modules -->
+  <script src="/static/js/map.js"></script>
+  <script src="/static/js/charts.js"></script>
+  <script src="/static/js/export.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
