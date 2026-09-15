@@ -6,6 +6,11 @@
   <meta name="theme-color" content="#0f172a">
   <title>ALEMS - Aerial Lead Exposure Monitoring System</title>
   
+  <!-- Cache control -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   
@@ -15,8 +20,8 @@
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   
-  <!-- Custom CSS -->
-  <link rel="stylesheet" href="/static/css/style.css">
+  <!-- Custom CSS with cache busting -->
+  <link rel="stylesheet" href="/static/css/style.css?v=2.3">
 </head>
 <body>
 
@@ -31,11 +36,14 @@
     </div>
 
     <div class="header-badges">
-      <div class="badge badge-lead" id="header-address">
-        44081 Beaver Creek Dr
+      <div class="badge badge-lead" id="header-address" onclick="switchTab('tab-settings')" style="cursor: pointer;" title="Click to configure property location">
+        📍 44081 Beaver Creek Dr
       </div>
-      <div class="badge badge-cyan">
-        2W6: 3.7 NM (Rwy 11/29)
+      <div class="badge badge-cyan" id="header-airport" onclick="switchTab('tab-settings')" style="cursor: pointer;" title="Click to configure airfield">
+        ✈️ 2W6: 3.7 NM (Rwy 11/29)
+      </div>
+      <div class="badge" id="header-version" style="background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.4); color: #93c5fd; font-weight: 700;">
+        v2.3
       </div>
       <div class="badge badge-green">
         <span class="pulse-dot" id="ws-status-dot"></span>
@@ -350,10 +358,10 @@
     </div>
   </main>
 
-  <!-- JavaScript Modules -->
-  <script src="/static/js/map.js"></script>
-  <script src="/static/js/charts.js"></script>
-  <script src="/static/js/export.js"></script>
-  <script src="/static/js/app.js"></script>
+  <!-- JavaScript Modules with cache-busting -->
+  <script src="/static/js/map.js?v=2.3"></script>
+  <script src="/static/js/charts.js?v=2.3"></script>
+  <script src="/static/js/export.js?v=2.3"></script>
+  <script src="/static/js/app.js?v=2.3"></script>
 </body>
 </html>

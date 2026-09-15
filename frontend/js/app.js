@@ -105,7 +105,15 @@ function applyConfigToUI(cfg) {
   if (!cfg) return;
 
   const addrEl = document.getElementById('header-address');
-  if (addrEl && cfg.home) addrEl.textContent = cfg.home.address ? cfg.home.address.split(',')[0] : 'Monitored Property';
+  if (addrEl && cfg.home) {
+    const label = cfg.home.address ? cfg.home.address.split(',')[0] : `${cfg.home.lat?.toFixed(4)}, ${cfg.home.lon?.toFixed(4)}`;
+    addrEl.textContent = `📍 ${label}`;
+  }
+
+  const airportEl = document.getElementById('header-airport');
+  if (airportEl && cfg.airport) {
+    airportEl.textContent = `✈️ ${cfg.airport.id || 'Airfield'} (Rwy ${cfg.airport.runway_heading_11 || '?'}/${cfg.airport.runway_heading_29 || '?'})`;
+  }
 
   const homeAddrInput = document.getElementById('setting-home-address');
   if (homeAddrInput && cfg.home) homeAddrInput.value = cfg.home.address || '';

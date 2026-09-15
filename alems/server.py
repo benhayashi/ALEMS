@@ -28,6 +28,14 @@ async def startup_event():
     # Start background daemon task
     asyncio.create_task(daemon.run())
 
+@app.middleware("http")
+async def add_no_cache_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0, post-check=0, pre-check=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
 @app.on_event("shutdown")
 def shutdown_event():
     daemon.stop()
@@ -36,7 +44,11 @@ def shutdown_event():
 def serve_index():
     index_path = FRONTEND_DIR / "index.html"
     if index_path.exists():
-        return FileResponse(index_path)
+        response = FileResponse(index_path)
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
     return JSONResponse({"status": "Frontend not yet initialized. Visit /api/status"})
 
 from alems.geocoding import geocoding_service
