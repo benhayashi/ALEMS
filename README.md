@@ -178,6 +178,27 @@ Every flyover event logged to SQLite and exported to CSV contains the following 
 
 ---
 
+## Database & Configuration Migration (Docker / Raspberry Pi)
+
+ALEMS features a built-in GUI migration engine designed for moving between machines or deploying to a standalone Raspberry Pi:
+
+### Exporting from Existing Instance
+In the **Settings** tab under **Database & Configuration Migration**:
+- **Full Bundle (.zip)**: Exports a complete self-contained package containing `alems.db` (clean defragmented SQLite snapshot), `config.yaml`, `config.json`, and `manifest.json`.
+- **Database (.db)**: Downloads the live SQLite database snapshot with 440k+ FAA aircraft records and flyovers.
+- **Settings (.yaml)**: Downloads active settings formatted for Docker Compose or standalone `config.yaml`.
+
+### Importing into a New Docker / Raspberry Pi Instance
+1. Deploy ALEMS on your new device using `docker compose up -d`.
+2. Open the ALEMS Web GUI at `http://<NEW_DEVICE_IP>:8085`.
+3. In **Settings** $\rightarrow$ **Database & Configuration Migration**, drag and drop your `.zip` bundle, `.db` database, or `.yaml` configuration into the import zone.
+4. Preview the validated package contents, record counts, and schema.
+5. Click **Confirm & Restore**. The engine hot-swaps the database using SQLite's online transactional backup API, syncs configuration settings, and broadcasts real-time state updates across all connected clients.
+6. *Automated Safety Backup:* Before any restore operation, ALEMS automatically creates a `.pre_restore_bak` copy of the existing database.
+
+---
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE) — a permissive license that allows free commercial, private, educational, and public use, modification, and distribution.
+

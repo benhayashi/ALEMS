@@ -18,6 +18,9 @@ htmlcov/
 data/*.db
 data/*.db-shm
 data/*.db-wal
+data/*.bak
+data/*.pre_restore_bak
+data/temp/
 data/config.json
 data/readsb_aircrafts.json
 

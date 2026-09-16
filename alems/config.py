@@ -106,6 +106,42 @@ class Settings(BaseModel):
         except Exception as e:
             print(f"Error persisting configuration: {e}")
 
+    def to_clean_dict(self) -> Dict[str, Any]:
+        """Return exportable dictionary of configuration settings."""
+        keys = [
+            "HOME_ADDRESS", "HOME_LAT", "HOME_LON", "HOME_ELEV_MSL_FT",
+            "AIRPORT_ID", "AIRPORT_NAME", "AIRPORT_LAT", "AIRPORT_LON", "AIRPORT_ELEV_MSL_FT",
+            "AIRPORT_RUNWAY_HEADING_11", "AIRPORT_RUNWAY_HEADING_29", "AIRPORT_RUNWAY_LENGTH_FT",
+            "ACTIVE_MONITOR_RADIUS_NM", "FLYOVER_EVENT_RADIUS_NM", "MAX_TRACK_AGE_SECONDS",
+            "READSB_URL", "READSB_HOST", "READSB_PORT", "READSB_PATH", "READSB_POLL_INTERVAL_SEC",
+            "WEATHER_PROVIDER", "ECOWITT_IP", "ECOWITT_PORT",
+            "HASS_URL", "HASS_TOKEN", "HASS_WIND_SPEED_ENTITY", "HASS_WIND_DIR_ENTITY", "HASS_WIND_GUST_ENTITY", "HASS_TEMP_ENTITY",
+            "METAR_STATIONS", "METAR_POLL_INTERVAL_SEC",
+            "LEAD_CONTENT_GRAMS_PER_GALLON", "PLUME_DISPERSION_HALF_ANGLE_DEG"
+        ]
+        return {k: getattr(self, k) for k in keys if hasattr(self, k)}
+
+    def load_from_dict(self, data: Dict[str, Any]) -> List[str]:
+        """Apply and persist dictionary of settings. Returns list of updated keys."""
+        updated = []
+        clean_updates = {}
+        for k, v in data.items():
+            key_upper = k.upper()
+            if hasattr(self, key_upper) and v is not None:
+                target_val = getattr(self, key_upper)
+                target_type = type(target_val) if target_val is not None else str
+                try:
+                    casted = target_type(v)
+                    clean_updates[key_upper] = casted
+                    updated.append(key_upper)
+                except Exception:
+                    clean_updates[key_upper] = v
+                    updated.append(key_upper)
+
+        if clean_updates:
+            self.save_persisted(clean_updates)
+        return updated
+
 config = Settings()
 config.load_persisted()
 config.EXPORTS_DIR.mkdir(parents=True, exist_ok=True)

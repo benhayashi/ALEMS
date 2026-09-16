@@ -5,6 +5,7 @@ Stores immutable flyover events, high-frequency track records, and weather obser
 import sqlite3
 import hashlib
 import json
+from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -16,14 +17,20 @@ class Database:
     def __init__(self, db_path: Optional[Path] = None):
         self.db_path = db_path or config.DATABASE_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._cache_hex: Dict[str, Optional[Dict[str, str]]] = {}
         self._init_db()
 
-    def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path))
+    @contextmanager
+    def _get_connection(self):
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA synchronous=NORMAL;")
-        return conn
+        conn.execute("PRAGMA busy_timeout=30000;")
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     def _init_db(self) -> None:
         with self._get_connection() as conn:
@@ -141,17 +148,21 @@ class Database:
         """Lookup registration and ICAO type from local 440k+ aircraft registry."""
         if not hex_code:
             return None
-        hex_clean = hex_code.strip()
+        hex_clean = hex_code.strip().lower()
+        if hex_clean in self._cache_hex:
+            return self._cache_hex[hex_clean]
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT reg, icao_type FROM aircraft_registry WHERE hex IN (?, ?) LIMIT 1",
-                (hex_clean.lower(), hex_clean.upper())
+                (hex_clean, hex_clean.upper())
             )
             row = cursor.fetchone()
-            if row:
-                return {"reg": row[0], "icao_type": row[1]}
-        return None
+            res = {"reg": row[0], "icao_type": row[1]} if row else None
+            if len(self._cache_hex) < 15000:
+                self._cache_hex[hex_clean] = res
+            return res
 
 
     @staticmethod
@@ -396,4 +407,95 @@ class Database:
             conn.commit()
             return count
 
+    def checkpoint(self) -> None:
+        """Flush WAL journal transactions into the main database file."""
+        with self._get_connection() as conn:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+
+    def export_snapshot(self, output_path: Path) -> Path:
+        """Create a consistent, defragmented SQLite snapshot for backup/migration."""
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if output_path.exists():
+            output_path.unlink()
+        with self._get_connection() as conn:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            conn.execute(f"VACUUM INTO '{output_path}';")
+        return output_path
+
+    def inspect_database_file(self, db_file_path: Path) -> Dict[str, Any]:
+        """Verify an imported database file and inspect its contents."""
+        if not db_file_path.exists():
+            raise FileNotFoundError("Database file does not exist")
+        with open(db_file_path, "rb") as f:
+            header = f.read(16)
+            if not header.startswith(b"SQLite format 3\x00"):
+                raise ValueError("Invalid file format: Not a valid SQLite 3 database")
+
+        conn = sqlite3.connect(str(db_file_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [row[0] for row in cursor.fetchall()]
+
+            event_count = 0
+            point_count = 0
+            registry_count = 0
+
+            if "flyover_events" in tables:
+                cursor.execute("SELECT COUNT(*) FROM flyover_events")
+                event_count = cursor.fetchone()[0]
+            if "track_points" in tables:
+                cursor.execute("SELECT COUNT(*) FROM track_points")
+                point_count = cursor.fetchone()[0]
+            if "aircraft_registry" in tables:
+                cursor.execute("SELECT COUNT(*) FROM aircraft_registry")
+                registry_count = cursor.fetchone()[0]
+
+            return {
+                "valid": True,
+                "tables": tables,
+                "event_count": event_count,
+                "point_count": point_count,
+                "registry_count": registry_count,
+                "size_bytes": db_file_path.stat().st_size
+            }
+        finally:
+            conn.close()
+
+    def restore_from_snapshot(self, snapshot_path: Path) -> Dict[str, Any]:
+        """Safely restore the active database with an imported backup."""
+        info = self.inspect_database_file(snapshot_path)
+        if not info.get("valid"):
+            raise ValueError("Invalid SQLite snapshot file")
+
+        # 1. Invalidate hex lookup cache
+        self._cache_hex.clear()
+
+        # 2. Safety copy of current db
+        backup_path = self.db_path.with_name(f"{self.db_path.name}.pre_restore_bak")
+        if self.db_path.exists():
+            import shutil
+            shutil.copy2(self.db_path, backup_path)
+
+        # 3. Use SQLite Online Backup API to safely overwrite active db in-place
+        src = sqlite3.connect(str(snapshot_path), timeout=30.0)
+        dst = sqlite3.connect(str(self.db_path), timeout=30.0)
+        try:
+            dst.execute("PRAGMA busy_timeout=30000;")
+            src.backup(dst)
+        finally:
+            src.close()
+            dst.close()
+
+        # 4. Checkpoint WAL and ensure schema
+        try:
+            self.checkpoint()
+        except Exception:
+            pass
+        self._init_db()
+
+        return info
+
 db = Database()
+

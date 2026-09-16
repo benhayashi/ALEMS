@@ -1,16 +1,21 @@
 """FastAPI Server and REST / WebSocket API for ALEMS."""
 
 import asyncio
+import json
+import uuid
+import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 import time
 import requests
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Request
+import yaml
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Request, UploadFile, File, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from alems.config import config, BASE_DIR
+from alems.config import config, BASE_DIR, DATA_DIR
 from alems.storage.db import db
 from alems.storage.exporter import exporter
 from alems.daemon import daemon
@@ -353,6 +358,266 @@ def download_event_points_csv(event_id: str):
     if not path or not path.exists():
         return JSONResponse({"error": "Event not found or has no points"}, status_code=404)
     return FileResponse(path, filename=path.name, media_type="text/csv")
+
+# ==========================================
+# Backup, Export & Device Migration Endpoints
+# ==========================================
+
+@app.get("/api/backup/database")
+def download_database_backup():
+    """Download clean, checkpointed SQLite database snapshot."""
+    temp_dir = DATA_DIR / "temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    backup_file = temp_dir / f"alems_backup_{ts}.db"
+    db.export_snapshot(backup_file)
+    return FileResponse(
+        backup_file,
+        filename=f"alems_backup_{ts}.db",
+        media_type="application/vnd.sqlite3"
+    )
+
+@app.get("/api/backup/config")
+def download_config_backup(format: str = Query("yaml")):
+    """Download runtime configuration in YAML or JSON format."""
+    clean_dict = config.to_clean_dict()
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    if format.lower() == "json":
+        content = json.dumps(clean_dict, indent=2)
+        return Response(
+            content=content,
+            media_type="application/json",
+            headers={"Content-Disposition": f"attachment; filename=alems_config_{ts}.json"}
+        )
+    else:
+        content = yaml.dump(clean_dict, sort_keys=False)
+        return Response(
+            content=content,
+            media_type="application/x-yaml",
+            headers={"Content-Disposition": f"attachment; filename=alems_config_{ts}.yaml"}
+        )
+
+@app.get("/api/backup/bundle")
+def download_backup_bundle():
+    """Download complete migration bundle (database + config.yaml + config.json + manifest) as a ZIP."""
+    temp_dir = DATA_DIR / "temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+    db_temp = temp_dir / f"alems_temp_{ts}.db"
+    db.export_snapshot(db_temp)
+    info = db.inspect_database_file(db_temp)
+
+    zip_path = temp_dir / f"alems_migration_bundle_{ts}.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(db_temp, arcname="alems.db")
+
+        cfg_dict = config.to_clean_dict()
+        zf.writestr("config.yaml", yaml.dump(cfg_dict, sort_keys=False))
+        zf.writestr("config.json", json.dumps(cfg_dict, indent=2))
+
+        manifest = {
+            "version": "1.0.0",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "database": {
+                "events_count": info.get("event_count", 0),
+                "points_count": info.get("point_count", 0),
+                "registry_count": info.get("registry_count", 0),
+                "size_bytes": info.get("size_bytes", 0)
+            },
+            "config_keys_count": len(cfg_dict)
+        }
+        zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+
+    if db_temp.exists():
+        try:
+            db_temp.unlink()
+        except Exception:
+            pass
+
+    return FileResponse(
+        zip_path,
+        filename=f"alems_migration_bundle_{ts}.zip",
+        media_type="application/zip"
+    )
+
+@app.post("/api/backup/inspect")
+async def inspect_uploaded_backup(file: UploadFile = File(...)):
+    """Inspect an uploaded file to preview its contents before applying."""
+    temp_dir = DATA_DIR / "temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_file = temp_dir / f"upload_{uuid.uuid4().hex}_{file.filename}"
+
+    try:
+        content = await file.read()
+        with open(temp_file, "wb") as f:
+            f.write(content)
+
+        fname_lower = (file.filename or "").lower()
+
+        # Check if ZIP bundle
+        if fname_lower.endswith(".zip"):
+            try:
+                with zipfile.ZipFile(temp_file, "r") as zf:
+                    namelist = zf.namelist()
+                    has_db = any(n.endswith(".db") for n in namelist)
+                    has_yaml = any(n.endswith(".yaml") or n.endswith(".yml") for n in namelist)
+                    has_json = any(n.endswith(".json") and not n.endswith("manifest.json") for n in namelist)
+
+                    db_info = None
+                    if has_db:
+                        db_name = next(n for n in namelist if n.endswith(".db"))
+                        extracted_db = temp_dir / f"inspect_{uuid.uuid4().hex}.db"
+                        with open(extracted_db, "wb") as out_f:
+                            out_f.write(zf.read(db_name))
+                        try:
+                            db_info = db.inspect_database_file(extracted_db)
+                        finally:
+                            if extracted_db.exists():
+                                extracted_db.unlink()
+
+                    return {
+                        "type": "bundle_zip",
+                        "filename": file.filename,
+                        "files": namelist,
+                        "has_database": has_db,
+                        "has_config": (has_yaml or has_json),
+                        "database_info": db_info,
+                        "size_bytes": len(content)
+                    }
+            except zipfile.BadZipFile:
+                return JSONResponse({"error": "Uploaded file is not a valid ZIP archive"}, status_code=400)
+
+        # Check if SQLite DB
+        elif fname_lower.endswith(".db") or fname_lower.endswith(".sqlite") or content.startswith(b"SQLite format 3\x00"):
+            try:
+                info = db.inspect_database_file(temp_file)
+                return {
+                    "type": "database",
+                    "filename": file.filename,
+                    "database_info": info,
+                    "size_bytes": len(content)
+                }
+            except Exception as e:
+                return JSONResponse({"error": f"Invalid SQLite database: {e}"}, status_code=400)
+
+        # Check if YAML / JSON config
+        elif fname_lower.endswith(".yaml") or fname_lower.endswith(".yml") or fname_lower.endswith(".json"):
+            try:
+                text_content = content.decode("utf-8")
+                parsed = yaml.safe_load(text_content)
+                if not isinstance(parsed, dict):
+                    return JSONResponse({"error": "Configuration file must contain key-value mappings"}, status_code=400)
+                valid_keys = [k for k in parsed.keys() if hasattr(config, k.upper())]
+                return {
+                    "type": "config",
+                    "filename": file.filename,
+                    "format": "yaml" if (fname_lower.endswith(".yaml") or fname_lower.endswith(".yml")) else "json",
+                    "valid_keys_count": len(valid_keys),
+                    "keys": valid_keys,
+                    "size_bytes": len(content)
+                }
+            except Exception as e:
+                return JSONResponse({"error": f"Failed to parse configuration: {e}"}, status_code=400)
+        else:
+            return JSONResponse({"error": "Unsupported file format. Please upload .zip, .db, .sqlite, .yaml, or .json"}, status_code=400)
+    finally:
+        if temp_file.exists():
+            try:
+                temp_file.unlink()
+            except Exception:
+                pass
+
+@app.post("/api/backup/restore")
+async def restore_backup(file: UploadFile = File(...)):
+    """Upload and restore a database (.db), configuration (.yaml/.json), or full migration bundle (.zip)."""
+    temp_dir = DATA_DIR / "temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_file = temp_dir / f"restore_{uuid.uuid4().hex}_{file.filename}"
+
+    try:
+        content = await file.read()
+        with open(temp_file, "wb") as f:
+            f.write(content)
+
+        fname_lower = (file.filename or "").lower()
+        restored_db_info = None
+        restored_config_keys = []
+
+        # 1. ZIP Migration Bundle
+        if fname_lower.endswith(".zip"):
+            try:
+                with zipfile.ZipFile(temp_file, "r") as zf:
+                    namelist = zf.namelist()
+                    # Restore DB if present
+                    for n in namelist:
+                        if n.endswith(".db"):
+                            extracted_db = temp_dir / f"restore_extract_{uuid.uuid4().hex}.db"
+                            with open(extracted_db, "wb") as out_f:
+                                out_f.write(zf.read(n))
+                            try:
+                                restored_db_info = db.restore_from_snapshot(extracted_db)
+                            finally:
+                                if extracted_db.exists():
+                                    extracted_db.unlink()
+                            break
+                    # Restore config if present
+                    cfg_file = None
+                    for n in ["config.yaml", "config.yml", "config.json"]:
+                        if n in namelist:
+                            cfg_file = n
+                            break
+                    if cfg_file:
+                        cfg_text = zf.read(cfg_file).decode("utf-8")
+                        parsed = yaml.safe_load(cfg_text)
+                        if isinstance(parsed, dict):
+                            restored_config_keys = config.load_from_dict(parsed)
+            except zipfile.BadZipFile:
+                return JSONResponse({"error": "Invalid ZIP archive"}, status_code=400)
+
+        # 2. SQLite Database
+        elif fname_lower.endswith(".db") or fname_lower.endswith(".sqlite") or content.startswith(b"SQLite format 3\x00"):
+            try:
+                restored_db_info = db.restore_from_snapshot(temp_file)
+            except Exception as e:
+                return JSONResponse({"error": f"Failed to restore SQLite database: {e}"}, status_code=400)
+
+        # 3. YAML or JSON Configuration
+        elif fname_lower.endswith(".yaml") or fname_lower.endswith(".yml") or fname_lower.endswith(".json"):
+            try:
+                text_content = content.decode("utf-8")
+                parsed = yaml.safe_load(text_content)
+                if not isinstance(parsed, dict):
+                    return JSONResponse({"error": "Configuration file must contain key-value mappings"}, status_code=400)
+                restored_config_keys = config.load_from_dict(parsed)
+            except Exception as e:
+                return JSONResponse({"error": f"Failed to restore configuration: {e}"}, status_code=400)
+        else:
+            return JSONResponse({"error": "Unsupported file format. Please upload .zip, .db, .sqlite, .yaml, or .json"}, status_code=400)
+
+        # Broadcast refreshed state to UI via WebSocket
+        await daemon.broadcast({
+            "type": "RESTORE_COMPLETED",
+            "stats": db.get_statistics(),
+            "events": db.get_recent_events(limit=25),
+            "config": config.to_clean_dict()
+        })
+
+        return JSONResponse({
+            "success": True,
+            "filename": file.filename,
+            "database_restored": bool(restored_db_info),
+            "database_info": restored_db_info,
+            "config_restored": bool(restored_config_keys),
+            "config_keys_updated": restored_config_keys,
+            "active_config": config.to_clean_dict()
+        })
+    finally:
+        if temp_file.exists():
+            try:
+                temp_file.unlink()
+            except Exception:
+                pass
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

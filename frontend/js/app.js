@@ -100,6 +100,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadConfigAndInit();
   connectWebSocket();
   setupSettingsHandlers();
+  if (typeof setupMigrationUI === 'function') {
+    setupMigrationUI();
+  }
 });
 
 async function loadConfigAndInit() {
@@ -290,6 +293,21 @@ function connectWebSocket() {
         applyConfigToUI(appConfig);
         if (typeof recenterAndRedraw === 'function') {
           recenterAndRedraw(appConfig.home, appConfig.airport);
+        }
+      } else if (data.type === 'RESTORE_COMPLETED') {
+        if (data.config) {
+          appConfig = data.config;
+          applyConfigToUI(appConfig);
+          if (typeof recenterAndRedraw === 'function') {
+            recenterAndRedraw(appConfig.home, appConfig.airport);
+          }
+        }
+        if (data.events) {
+          allEventsList = data.events;
+          renderEventsTable(allEventsList);
+        }
+        if (typeof fetchAndRenderAnalytics === 'function') {
+          fetchAndRenderAnalytics();
         }
       }
     } catch (e) {

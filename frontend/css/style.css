@@ -779,3 +779,28 @@ tr:hover {
   transform: translateX(-50%) translateY(0);
   opacity: 1;
 }
+
+/* Database & Migration Card Styles */
+.migration-dropzone {
+  border: 2px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  padding: 1.5rem 1rem;
+  text-align: center;
+  background: rgba(15, 23, 42, 0.4);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.migration-dropzone:hover,
+.migration-dropzone.dragover {
+  border-color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.08);
+  transform: scale(1.005);
+}
+
+.backup-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem;
+}
+
