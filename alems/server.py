@@ -375,6 +375,13 @@ def get_active_aircraft():
 def get_weather():
     return weather_collector.get_effective_wind()
 
+@app.post("/api/weather/refresh")
+def refresh_weather():
+    """Force an immediate fresh query of aerodrome METAR and ground weather."""
+    weather = weather_collector.get_effective_wind(force_metar_refresh=True)
+    daemon.latest_weather_snapshot = weather
+    return weather
+
 @app.get("/api/events")
 def get_events(limit: int = 100, leaded_only: bool = False):
     events = db.get_recent_events(limit=limit, leaded_only=leaded_only)

@@ -123,28 +123,48 @@
       <div class="radar-sidebar">
         <!-- Dual Layer Weather Card -->
         <div class="card">
-          <div class="card-header">
-            <span class="card-title">
-              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
-              Wind & Lead Plume
-            </span>
-            <span class="badge badge-cyan" id="weather-plume-dir">--° (Plume Drift)</span>
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 0.4rem;">
+              <span class="card-title" style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0;">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+                Wind &amp; Lead Plume
+              </span>
+              <button class="btn btn-secondary btn-sm" id="btn-refresh-weather" onclick="refreshWeather(true)" title="Fetch latest NOAA METAR observation now" style="padding: 2px 7px; font-size: 0.72rem; line-height: 1.2;">
+                ↻
+              </button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.35rem;">
+              <span class="badge badge-cyan" id="weather-plume-dir">--° (Plume Drift)</span>
+            </div>
           </div>
 
           <div class="weather-grid">
-            <div class="weather-cell">
-              <div class="weather-cell-title">Ground (Ecowitt)</div>
-              <div class="weather-cell-val" id="weather-ecowitt-speed">-- mph</div>
-              <div class="weather-sub">Dir: <span id="weather-ecowitt-dir">--°</span> | <span id="weather-ecowitt-gust">Gust --</span></div>
-              <div class="weather-sub" style="color: #64748b;">Below Tree Line</div>
+            <!-- Cell 1: Ground Microclimate (Ecowitt) -->
+            <div class="weather-cell" id="weather-ecowitt-cell">
+              <div class="weather-cell-title" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Ground (Ecowitt)</span>
+                <span class="badge" id="weather-ecowitt-badge" style="font-size: 0.6rem; padding: 1px 4px; background: rgba(148, 163, 184, 0.15); color: #94a3b8;">OFFLINE</span>
+              </div>
+              <div class="weather-cell-val" id="weather-ecowitt-speed" style="font-size: 0.95rem; color: #94a3b8;">Not Connected</div>
+              <div class="weather-sub" id="weather-ecowitt-details">No local sensor</div>
+              <div class="weather-sub" id="weather-ecowitt-sub" style="color: #64748b;">Below Tree Line</div>
             </div>
 
-            <div class="weather-cell">
-              <div class="weather-cell-title" id="weather-aero-station">Aerodrome (2W6/NHK)</div>
+            <!-- Cell 2: Aerodrome (NOAA METAR) -->
+            <div class="weather-cell" id="weather-aero-cell">
+              <div class="weather-cell-title" style="display: flex; justify-content: space-between; align-items: center;">
+                <span id="weather-aero-station">Aerodrome (KNHK)</span>
+                <span class="badge badge-green" id="weather-aero-badge" style="font-size: 0.6rem; padding: 1px 4px;">METAR LIVE</span>
+              </div>
               <div class="weather-cell-val" id="weather-aero-speed">-- kts</div>
-              <div class="weather-sub">Dir: <span id="weather-aero-dir">--°</span></div>
-              <div class="weather-sub" style="color: #38bdf8;">10m Standard Mast</div>
+              <div class="weather-sub" id="weather-aero-details">Dir: --°</div>
+              <div class="weather-sub" id="weather-aero-time" style="color: #38bdf8;">Standard 10m Mast</div>
             </div>
+          </div>
+
+          <!-- Raw METAR observation banner -->
+          <div id="weather-raw-metar" style="font-family: monospace; font-size: 0.67rem; color: #94a3b8; background: rgba(0,0,0,0.22); border-top: 1px solid var(--border-color); padding: 0.35rem 0.65rem; border-radius: 0 0 6px 6px; overflow-x: auto; white-space: nowrap;" title="Raw NOAA METAR Observation">
+            METAR: Fetching latest observation...
           </div>
         </div>
 

@@ -439,34 +439,145 @@ function handleNewEvent(eventRecord) {
 }
 
 function updateWeatherUI(weather) {
+  if (!weather) return;
   const ecowitt = weather.ecowitt || {};
   const aerodrome = weather.aerodrome || {};
+  const isEcoConnected = Boolean(weather.is_ecowitt_connected);
 
   // Ground station (Ecowitt)
+  const elEcoBadge = document.getElementById('weather-ecowitt-badge');
   const elEcoSpd = document.getElementById('weather-ecowitt-speed');
-  const elEcoDir = document.getElementById('weather-ecowitt-dir');
-  const elEcoGust = document.getElementById('weather-ecowitt-gust');
-  const elEcoTemp = document.getElementById('weather-ecowitt-temp');
+  const elEcoDetails = document.getElementById('weather-ecowitt-details');
+  const elEcoSub = document.getElementById('weather-ecowitt-sub');
 
-  if (elEcoSpd) elEcoSpd.textContent = `${ecowitt.wind_speed_mph || 0} mph`;
-  if (elEcoDir) elEcoDir.textContent = `${ecowitt.wind_dir_deg || 0}°`;
-  if (elEcoGust) elEcoGust.textContent = `Gust: ${ecowitt.wind_gust_mph || 0} mph`;
-  if (elEcoTemp) elEcoTemp.textContent = `${ecowitt.temp_f || 0}°F`;
+  if (isEcoConnected) {
+    if (elEcoBadge) {
+      elEcoBadge.textContent = 'ECOWITT LIVE';
+      elEcoBadge.className = 'badge badge-green';
+      elEcoBadge.style.background = '';
+      elEcoBadge.style.color = '';
+    }
+    if (elEcoSpd) {
+      elEcoSpd.textContent = `${ecowitt.wind_speed_mph || 0} mph`;
+      elEcoSpd.style.color = 'var(--text-primary)';
+    }
+    if (elEcoDetails) {
+      elEcoDetails.textContent = `Dir: ${ecowitt.wind_dir_deg || 0}° | Gust: ${ecowitt.wind_gust_mph || 0} mph`;
+    }
+    if (elEcoSub) {
+      elEcoSub.textContent = ecowitt.temp_f ? `${ecowitt.temp_f}°F · Below Tree Line` : 'Below Tree Line';
+      elEcoSub.style.color = '#38bdf8';
+    }
+  } else {
+    if (elEcoBadge) {
+      const isConfigured = weather.provider && weather.provider !== 'aerodrome';
+      elEcoBadge.textContent = isConfigured ? 'OFFLINE' : 'NOT CONFIGURED';
+      elEcoBadge.className = 'badge';
+      elEcoBadge.style.background = 'rgba(148, 163, 184, 0.15)';
+      elEcoBadge.style.color = '#94a3b8';
+    }
+    if (elEcoSpd) {
+      elEcoSpd.textContent = 'Not Connected';
+      elEcoSpd.style.color = '#94a3b8';
+    }
+    if (elEcoDetails) {
+      elEcoDetails.textContent = 'Using Aerodrome METAR';
+    }
+    if (elEcoSub) {
+      elEcoSub.textContent = 'No local sensor';
+      elEcoSub.style.color = '#64748b';
+    }
+  }
 
   // Aerodrome (2W6 / KNHK)
+  const elAeroBadge = document.getElementById('weather-aero-badge');
   const elAeroStation = document.getElementById('weather-aero-station');
   const elAeroSpd = document.getElementById('weather-aero-speed');
-  const elAeroDir = document.getElementById('weather-aero-dir');
+  const elAeroDetails = document.getElementById('weather-aero-details');
+  const elAeroTime = document.getElementById('weather-aero-time');
 
-  if (elAeroStation) elAeroStation.textContent = `${aerodrome.station || 'KNHK'} (Above Trees)`;
-  if (elAeroSpd) elAeroSpd.textContent = `${aerodrome.wind_speed_kts || 0} kts (${aerodrome.wind_speed_mph || 0} mph)`;
-  if (elAeroDir) elAeroDir.textContent = `${aerodrome.wind_dir_deg || 0}°`;
+  const aeroStation = aerodrome.station || 'KNHK';
+  if (elAeroStation) {
+    elAeroStation.textContent = `Aerodrome (${aeroStation})`;
+  }
 
-  // Effective Plume Drift Vector
+  if (aerodrome.status === 'live') {
+    if (elAeroBadge) {
+      elAeroBadge.textContent = 'METAR LIVE';
+      elAeroBadge.className = 'badge badge-green';
+    }
+    if (elAeroSpd) {
+      elAeroSpd.textContent = `${aerodrome.wind_speed_kts || 0} kts (${aerodrome.wind_speed_mph || 0} mph)`;
+    }
+    if (elAeroDetails) {
+      const gustStr = aerodrome.wind_gust_kts && aerodrome.wind_gust_kts > (aerodrome.wind_speed_kts || 0)
+        ? ` · Gust: ${aerodrome.wind_gust_kts} kts` : '';
+      elAeroDetails.textContent = `Dir: ${aerodrome.wind_dir_text || (aerodrome.wind_dir_deg != null ? aerodrome.wind_dir_deg + '°' : 'VRB')}${gustStr}`;
+    }
+    if (elAeroTime) {
+      const tempStr = aerodrome.temp_f != null ? `${aerodrome.temp_f}°F · ` : '';
+      const timeStr = aerodrome.report_time ? `Obs ${aerodrome.report_time.substring(11, 16)}Z` : 'Standard 10m Mast';
+      elAeroTime.textContent = `${tempStr}${timeStr}`;
+    }
+  } else {
+    if (elAeroBadge) {
+      elAeroBadge.textContent = aerodrome.status || 'CONNECTING';
+      elAeroBadge.className = 'badge';
+    }
+  }
+
+  // Raw METAR display strip
+  const elRawMetar = document.getElementById('weather-raw-metar');
+  if (elRawMetar) {
+    if (aerodrome.raw_metar) {
+      elRawMetar.textContent = `METAR: ${aerodrome.raw_metar}`;
+      elRawMetar.title = `Station: ${aeroStation} · Updated: ${aerodrome.timestamp_utc || 'recent'}`;
+    } else {
+      elRawMetar.textContent = 'METAR: Awaiting observation data...';
+    }
+  }
+
+  // Plume Drift Vector
   const elPlumeDir = document.getElementById('weather-plume-dir');
   if (elPlumeDir) {
-    const plumeHdg = ((weather.effective_wind_dir_deg || 110.0) + 180.0) % 360.0;
-    elPlumeDir.textContent = `${Math.round(plumeHdg)}° (Plume Drift)`;
+    const driftDeg = weather.plume_drift_dir_deg != null ? Math.round(weather.plume_drift_dir_deg) : 300;
+    const driftCard = weather.plume_drift_cardinal ? ` ${weather.plume_drift_cardinal}` : '';
+    elPlumeDir.textContent = `${driftDeg}°${driftCard} (Plume Drift)`;
+    elPlumeDir.title = `Winds blow from ${weather.effective_wind_dir_deg || 0}° (${weather.effective_wind_cardinal || ''}) at ${weather.effective_wind_speed_mph || 0} mph. Lead exhaust drifts towards ${driftDeg}°${driftCard}.`;
+  }
+}
+
+async function refreshWeather(manual = false) {
+  const btn = document.getElementById('btn-refresh-weather');
+  if (btn) {
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+    btn.textContent = '...';
+  }
+  try {
+    const res = await fetch('/api/weather/refresh', { method: 'POST' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.weather) {
+      updateWeatherUI(data.weather);
+      if (manual && typeof showToast === 'function') {
+        const stn = data.weather.aerodrome?.station || 'Aerodrome';
+        const wspd = data.weather.effective_wind_speed_mph || 0;
+        const wdir = data.weather.effective_wind_cardinal || '';
+        showToast(`✓ Weather updated from NOAA ${stn}: ${wspd} mph ${wdir}`);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to refresh weather:', err);
+    if (manual && typeof showToast === 'function') {
+      showToast(`Weather refresh failed: ${err.message}`, true);
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.textContent = '↻';
+    }
   }
 }
 
