@@ -78,11 +78,14 @@ class DispersionModel:
         aircraft_meta: Dict[str, Any],
         wind_speed_mph: float,
         wind_dir_deg: float,
-        home_lat: float = config.HOME_LAT,
-        home_lon: float = config.HOME_LON,
-        home_elev_ft: float = config.HOME_ELEV_MSL_FT
+        home_lat: Optional[float] = None,
+        home_lon: Optional[float] = None,
+        home_elev_ft: Optional[float] = None
     ) -> Dict[str, Any]:
         """Calculate detailed exposure metrics for a single telemetry observation."""
+        h_lat = home_lat if home_lat is not None else config.HOME_LAT
+        h_lon = home_lon if home_lon is not None else config.HOME_LON
+        h_elev = home_elev_ft if home_elev_ft is not None else config.HOME_ELEV_MSL_FT
         # Non-leaded aircraft (Turbines, Jets, Electric) emit 0 lead
         is_leaded = aircraft_meta.get("is_leaded", False)
         if not is_leaded:
@@ -98,13 +101,13 @@ class DispersionModel:
             }
 
         # Spatial geometry
-        dist_m = haversine_distance_m(lat, lon, home_lat, home_lon)
+        dist_m = haversine_distance_m(lat, lon, h_lat, h_lon)
         dist_ft = dist_m * 3.28084
-        alt_agl_ft = max(50.0, float(alt_msl_ft) - home_elev_ft)
+        alt_agl_ft = max(50.0, float(alt_msl_ft) - h_elev)
         alt_agl_m = alt_agl_ft * 0.3048
 
         # Bearing from aircraft to house
-        bearing_to_house = initial_bearing(lat, lon, home_lat, home_lon)
+        bearing_to_house = initial_bearing(lat, lon, h_lat, h_lon)
 
         # Wind transport & alignment
         angular_offset, is_downwind = self.calculate_wind_alignment(bearing_to_house, wind_dir_deg)

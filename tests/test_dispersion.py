@@ -50,7 +50,10 @@ def test_point_exposure_leaded():
         vertical_rate_fpm=500.0, # Climbing full throttle
         aircraft_meta=meta_piston,
         wind_speed_mph=8.0,
-        wind_dir_deg=315.0
+        wind_dir_deg=315.0,
+        home_lat=38.2720,
+        home_lon=-76.4950,
+        home_elev_ft=110.0
     )
     assert res["is_leaded"] is True
     assert res["lead_emission_rate_mg_s"] > 5.0 # ~5.5 mg/s
