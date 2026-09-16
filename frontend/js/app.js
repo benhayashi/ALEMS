@@ -181,6 +181,18 @@ function applyConfigToUI(cfg) {
   const simToggle = document.getElementById('setting-sim-toggle');
   if (simToggle) simToggle.checked = cfg.simulation_mode || false;
 
+  window.appConfig = cfg;
+
+  // Geofence & Heatmap Radius Inputs
+  const heatmapRadiusInput = document.getElementById('setting-heatmap-radius');
+  if (heatmapRadiusInput && cfg.thresholds) heatmapRadiusInput.value = cfg.thresholds.heatmap_radius_nm || 10.0;
+
+  const activeRadiusInput = document.getElementById('setting-active-radius');
+  if (activeRadiusInput && cfg.thresholds) activeRadiusInput.value = cfg.thresholds.active_radius_nm || 3.5;
+
+  const flyoverRadiusInput = document.getElementById('setting-flyover-radius');
+  if (flyoverRadiusInput && cfg.thresholds) flyoverRadiusInput.value = cfg.thresholds.flyover_radius_nm || 1.5;
+
   // ADS-B Hardware / Source Inputs
   const adsbProvider = document.getElementById('setting-adsb-provider');
   if (adsbProvider && cfg.endpoints) {
@@ -921,6 +933,9 @@ function setupSettingsHandlers() {
         airport_elev_ft: parseFloat(document.getElementById('setting-airport-elev')?.value) || undefined,
         runway_heading_1: parseFloat(document.getElementById('setting-runway-hdg1')?.value) || undefined,
         runway_heading_2: parseFloat(document.getElementById('setting-runway-hdg2')?.value) || undefined,
+        heatmap_radius_nm: parseFloat(document.getElementById('setting-heatmap-radius')?.value) || undefined,
+        active_radius_nm: parseFloat(document.getElementById('setting-active-radius')?.value) || undefined,
+        flyover_radius_nm: parseFloat(document.getElementById('setting-flyover-radius')?.value) || undefined,
         adsb_provider: document.getElementById('setting-adsb-provider')?.value || undefined,
         adsb_custom_url: document.getElementById('setting-adsb-custom-url')?.value.trim() || undefined,
         readsb_url: document.getElementById('setting-readsb-url')?.value.trim() || undefined,
@@ -946,6 +961,7 @@ function setupSettingsHandlers() {
         if (resp.ok) {
           const result = await resp.json();
           appConfig = result.config;
+          window.appConfig = appConfig;
           applyConfigToUI(appConfig);
           if (typeof recenterAndRedraw === 'function') {
             recenterAndRedraw(appConfig.home, appConfig.airport);

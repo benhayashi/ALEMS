@@ -87,6 +87,7 @@ def get_config():
         "thresholds": {
             "active_radius_nm": config.ACTIVE_MONITOR_RADIUS_NM,
             "flyover_radius_nm": config.FLYOVER_EVENT_RADIUS_NM,
+            "heatmap_radius_nm": config.HEATMAP_RADIUS_NM,
             "plume_half_angle_deg": config.PLUME_DISPERSION_HALF_ANGLE_DEG
         },
         "endpoints": {
@@ -121,6 +122,7 @@ class ConfigUpdateRequest(BaseModel):
     runway_length_ft: Optional[float] = None
     active_radius_nm: Optional[float] = None
     flyover_radius_nm: Optional[float] = None
+    heatmap_radius_nm: Optional[float] = None
     adsb_provider: Optional[str] = None
     adsb_custom_url: Optional[str] = None
     readsb_url: Optional[str] = None
@@ -167,6 +169,8 @@ async def update_config(req: ConfigUpdateRequest):
         updates["ACTIVE_MONITOR_RADIUS_NM"] = req.active_radius_nm
     if req.flyover_radius_nm is not None:
         updates["FLYOVER_EVENT_RADIUS_NM"] = req.flyover_radius_nm
+    if req.heatmap_radius_nm is not None:
+        updates["HEATMAP_RADIUS_NM"] = req.heatmap_radius_nm
 
     if req.adsb_provider is not None:
         updates["ADSB_PROVIDER"] = req.adsb_provider
@@ -391,6 +395,19 @@ def get_event_trajectory(event_id: str):
 @app.get("/api/statistics")
 def get_statistics(time_range: str = Query("all")):
     return db.get_statistics(time_range=time_range)
+
+@app.get("/api/exposure/heatmap")
+def get_exposure_heatmap(
+    time_range: str = Query("24h"),
+    radius_nm: Optional[float] = Query(None)
+):
+    """Return aggregated 100LL exposure coordinates and weights for regional heatmap."""
+    return db.get_exposure_heatmap_points(
+        time_range=time_range,
+        center_lat=config.AIRPORT_LAT,
+        center_lon=config.AIRPORT_LON,
+        radius_nm=radius_nm
+    )
 
 @app.get("/api/export/csv")
 def download_events_csv(leaded_only: bool = Query(False)):

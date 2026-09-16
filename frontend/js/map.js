@@ -21,9 +21,20 @@ let extendedCenterline = null;
 let proximityCircles = [];
 let isPinDropMode = false;
 
+// 100LL Exposure Heatmap state
+let exposureHeatmapLayer = null;
+let heatmapBoundaryCircle = null;
+let exposureHeatmapGroup = L.layerGroup();
+let isHeatmapActive = false;
+let currentHeatmapTimeframe = '24h';
+let cachedAirportConfig = null;
+let cachedHomeConfig = null;
+
 const NM_TO_METERS = 1852.0;
 
 function initMap(homeConfig, airportConfig) {
+  cachedHomeConfig = homeConfig;
+  cachedAirportConfig = airportConfig;
   if (map) {
     recenterAndRedraw(homeConfig, airportConfig);
     return;
@@ -66,16 +77,37 @@ function initMap(homeConfig, airportConfig) {
   });
   const satLayerGroup = L.layerGroup([satelliteLayer, satelliteLabels]);
 
+  // Base Map Layer 4: Topographical Contours (100% Free Esri World Topo Map, zero API key)
+  const topoLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19
+  });
+
   // Default to Dark Radar layer
   darkLayer.addTo(map);
 
   baseLayers = {
     "Dark Radar": darkLayer,
+    "Topographical (Contours)": topoLayer,
     "Street Map (OSM)": osmLayer,
     "Satellite Imagery": satLayerGroup
   };
 
-  layerControl = L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
+  const overlayLayers = {
+    "🔥 100LL Exposure Heatmap": exposureHeatmapGroup
+  };
+
+  layerControl = L.control.layers(baseLayers, overlayLayers, { position: 'topright' }).addTo(map);
+
+  map.on('overlayadd', (e) => {
+    if (e.name && e.name.includes("Heatmap")) {
+      toggleExposureHeatmap(true);
+    }
+  });
+  map.on('overlayremove', (e) => {
+    if (e.name && e.name.includes("Heatmap")) {
+      toggleExposureHeatmap(false);
+    }
+  });
 
   // Click / tap on map listener for Pin Drop Mode
   map.on('click', (e) => {
@@ -93,6 +125,8 @@ function initMap(homeConfig, airportConfig) {
 
 function recenterAndRedraw(homeConfig, airportConfig) {
   if (!map) return;
+  cachedHomeConfig = homeConfig;
+  cachedAirportConfig = airportConfig;
 
   const homeLat = (homeConfig && homeConfig.lat) ? homeConfig.lat : 38.3000;
   const homeLon = (homeConfig && homeConfig.lon) ? homeConfig.lon : -76.6000;
@@ -100,6 +134,9 @@ function recenterAndRedraw(homeConfig, airportConfig) {
   drawHomeMarker(homeConfig);
   drawProximityRings(homeLat, homeLon);
   drawAirportRunway(airportConfig);
+  if (isHeatmapActive) {
+    fetchAndDrawExposureHeatmap();
+  }
   map.setView([homeLat, homeLon], 13);
 }
 
@@ -481,5 +518,140 @@ function updatePlumeCone(hex, acLat, acLon, windDirDeg, isLeaded, isDownwind, in
       fillColor: plumeColor,
       fillOpacity: fillOpacity
     });
+  }
+}
+
+/**
+ * Toggle 100LL Lead Exposure Heatmap Layer
+ * @param {boolean|undefined} forcedState
+ */
+function toggleExposureHeatmap(forcedState) {
+  if (forcedState !== undefined) {
+    isHeatmapActive = Boolean(forcedState);
+  } else {
+    isHeatmapActive = !isHeatmapActive;
+  }
+
+  const btn = document.getElementById('btn-toggle-heatmap');
+  const timeframeControls = document.getElementById('heatmap-timeframe-controls');
+  const legend = document.getElementById('heatmap-legend');
+
+  if (isHeatmapActive) {
+    if (btn) {
+      btn.classList.add('btn-heatmap-active');
+      btn.innerHTML = '🔥 100LL Heatmap (ON)';
+    }
+    if (timeframeControls) timeframeControls.style.display = 'flex';
+    if (legend) legend.style.display = 'block';
+    fetchAndDrawExposureHeatmap();
+  } else {
+    if (btn) {
+      btn.classList.remove('btn-heatmap-active');
+      btn.innerHTML = '🔥 100LL Heatmap';
+    }
+    if (timeframeControls) timeframeControls.style.display = 'none';
+    if (legend) legend.style.display = 'none';
+    if (exposureHeatmapLayer && map) {
+      map.removeLayer(exposureHeatmapLayer);
+      exposureHeatmapLayer = null;
+    }
+    if (heatmapBoundaryCircle && map) {
+      map.removeLayer(heatmapBoundaryCircle);
+      heatmapBoundaryCircle = null;
+    }
+  }
+}
+
+/**
+ * Switch Heatmap aggregation timeframe (24h, 7d, 30d, all)
+ * @param {string} tf
+ */
+function setHeatmapTimeframe(tf) {
+  currentHeatmapTimeframe = tf;
+  document.querySelectorAll('#heatmap-timeframe-controls .timeframe-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.timeframe === tf);
+  });
+  fetchAndDrawExposureHeatmap();
+}
+
+/**
+ * Fetch and render 100LL cumulative exposure points onto Leaflet map
+ */
+async function fetchAndDrawExposureHeatmap() {
+  if (!map || !isHeatmapActive) return;
+
+  const radiusNm = (window.appConfig && window.appConfig.thresholds && window.appConfig.thresholds.heatmap_radius_nm) || 10.0;
+  const aptLat = (cachedAirportConfig && cachedAirportConfig.lat) || (window.appConfig && window.appConfig.airport && window.appConfig.airport.lat) || 38.315355;
+  const aptLon = (cachedAirportConfig && cachedAirportConfig.lon) || (window.appConfig && window.appConfig.airport && window.appConfig.airport.lon) || -76.550116;
+
+  try {
+    const res = await fetch(`/api/exposure/heatmap?time_range=${currentHeatmapTimeframe}&radius_nm=${radiusNm}`);
+    if (!res.ok) throw new Error("Failed to fetch exposure heatmap points");
+    const data = await res.json();
+
+    const actualRadiusNm = data.radius_nm || radiusNm;
+    const radiusMeters = actualRadiusNm * NM_TO_METERS;
+
+    // 1. Draw or update airfield radial boundary circle
+    if (heatmapBoundaryCircle && map) {
+      map.removeLayer(heatmapBoundaryCircle);
+    }
+    heatmapBoundaryCircle = L.circle([aptLat, aptLon], {
+      radius: radiusMeters,
+      color: '#f97316',
+      weight: 1.5,
+      dashArray: '6, 6',
+      fillColor: '#f97316',
+      fillOpacity: 0.04,
+      interactive: true
+    }).bindTooltip(`${actualRadiusNm} NM Airfield 100LL Exposure Range`, {
+      permanent: false,
+      direction: 'top'
+    });
+
+    if (isHeatmapActive && map) {
+      heatmapBoundaryCircle.addTo(map);
+    }
+
+    // Update legend radius text
+    const legendRad = document.getElementById('heatmap-legend-radius');
+    if (legendRad) {
+      legendRad.textContent = `(${actualRadiusNm} NM)`;
+    }
+
+    // 2. Remove existing heatmap layer
+    if (exposureHeatmapLayer && map) {
+      map.removeLayer(exposureHeatmapLayer);
+      exposureHeatmapLayer = null;
+    }
+
+    const points = data.points || [];
+    if (points.length > 0 && typeof L.heatLayer === 'function') {
+      // Yellow -> Orange -> Red spectrum for cumulative lead exposure
+      exposureHeatmapLayer = L.heatLayer(points, {
+        radius: 26,
+        blur: 16,
+        maxZoom: 16,
+        max: 1.0,
+        minOpacity: 0.22,
+        gradient: {
+          0.2: '#fde047',   // Pale Yellow
+          0.45: '#facc15',  // Vibrant Yellow
+          0.68: '#f97316',  // Vivid Orange
+          0.88: '#ef4444',  // Bright Red
+          1.0: '#991b1b'    // Deep Crimson / Severe
+        }
+      });
+
+      if (isHeatmapActive && map) {
+        exposureHeatmapLayer.addTo(map);
+      }
+    } else if (points.length === 0) {
+      if (typeof showToast === 'function') {
+        showToast(`No 100LL flyover points within ${actualRadiusNm} NM in the selected ${currentHeatmapTimeframe} timeframe.`);
+      }
+    }
+  } catch (err) {
+    console.error("Error drawing 100LL heatmap:", err);
   }
 }

@@ -31,6 +31,7 @@ class Settings(BaseModel):
     # Geofence & Proximity Thresholds
     ACTIVE_MONITOR_RADIUS_NM: float = float(os.getenv("MONITOR_RADIUS_NM", "3.5"))  # Active tracking range
     FLYOVER_EVENT_RADIUS_NM: float = float(os.getenv("EVENT_RADIUS_NM", "1.5"))    # Event trigger proximity
+    HEATMAP_RADIUS_NM: float = float(os.getenv("HEATMAP_RADIUS_NM", "10.0"))        # Radial exposure heatmap radius
     MAX_TRACK_AGE_SECONDS: int = int(os.getenv("TRACK_AGE_SEC", "30"))             # Inactivity timeout
 
     # ADS-B Telemetry Source Configuration
@@ -115,7 +116,7 @@ class Settings(BaseModel):
             "HOME_ADDRESS", "HOME_LAT", "HOME_LON", "HOME_ELEV_MSL_FT",
             "AIRPORT_ID", "AIRPORT_NAME", "AIRPORT_LAT", "AIRPORT_LON", "AIRPORT_ELEV_MSL_FT",
             "AIRPORT_RUNWAY_HEADING_11", "AIRPORT_RUNWAY_HEADING_29", "AIRPORT_RUNWAY_LENGTH_FT",
-            "ACTIVE_MONITOR_RADIUS_NM", "FLYOVER_EVENT_RADIUS_NM", "MAX_TRACK_AGE_SECONDS",
+            "ACTIVE_MONITOR_RADIUS_NM", "FLYOVER_EVENT_RADIUS_NM", "HEATMAP_RADIUS_NM", "MAX_TRACK_AGE_SECONDS",
             "ADSB_PROVIDER", "ADSB_CUSTOM_URL",
             "READSB_URL", "READSB_HOST", "READSB_PORT", "READSB_PATH", "READSB_POLL_INTERVAL_SEC",
             "WEATHER_PROVIDER", "ECOWITT_IP", "ECOWITT_PORT",

@@ -5,11 +5,13 @@ Stores immutable flyover events, high-frequency track records, and weather obser
 import sqlite3
 import hashlib
 import json
+import math
 from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from alems.config import config
+from alems.geodesy import haversine_distance_m
 
 class Database:
     """Handles SQLite persistence for flight logs and exposure records."""
@@ -267,6 +269,104 @@ class Database:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM track_points WHERE event_id = ? ORDER BY timestamp_utc ASC", (event_id,))
             return [dict(row) for row in cursor.fetchall()]
+
+    def get_exposure_heatmap_points(
+        self,
+        time_range: str = "24h",
+        center_lat: Optional[float] = None,
+        center_lon: Optional[float] = None,
+        radius_nm: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """Aggregate weighted exposure coordinates for 100LL cumulative heatmap within radius_nm from airport.
+        Supports time_range: '24h', '7d', '30d', 'all'
+        Returns: {
+            'points': [[lat, lon, intensity], ...],
+            'count': int,
+            'time_range': str,
+            'radius_nm': float,
+            'center': {'lat': float, 'lon': float}
+        }
+        """
+        c_lat = center_lat if center_lat is not None else config.AIRPORT_LAT
+        c_lon = center_lon if center_lon is not None else config.AIRPORT_LON
+        r_nm = float(radius_nm) if radius_nm is not None else config.HEATMAP_RADIUS_NM
+
+        now = datetime.now(timezone.utc)
+        cutoff_iso = None
+        if time_range == "24h":
+            cutoff_iso = (now - timedelta(hours=24)).isoformat()
+        elif time_range == "7d":
+            cutoff_iso = (now - timedelta(days=7)).isoformat()
+        elif time_range == "30d":
+            cutoff_iso = (now - timedelta(days=30)).isoformat()
+
+        # Bounding box pre-filter for performance
+        lat_margin = (r_nm / 55.0) + 0.02
+        cos_lat = math.cos(math.radians(c_lat)) or 1.0
+        lon_margin = (r_nm / (55.0 * abs(cos_lat))) + 0.02
+
+        min_lat, max_lat = c_lat - lat_margin, c_lat + lat_margin
+        min_lon, max_lon = c_lon - lon_margin, c_lon + lon_margin
+
+        query = """
+            SELECT tp.lat, tp.lon, tp.alt_agl_ft, tp.ground_speed_kts,
+                   tp.wind_speed_mph, tp.wind_dir_deg, tp.exposure_score,
+                   fe.max_exposure_score
+            FROM track_points tp
+            JOIN flyover_events fe ON tp.event_id = fe.event_id
+            WHERE fe.is_leaded = 1
+              AND tp.lat BETWEEN ? AND ?
+              AND tp.lon BETWEEN ? AND ?
+        """
+        params: List[Any] = [min_lat, max_lat, min_lon, max_lon]
+        if cutoff_iso:
+            query += " AND tp.timestamp_utc >= ?"
+            params.append(cutoff_iso)
+
+        heatmap_points: List[List[float]] = []
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute(query, params)
+            rows = c.fetchall()
+
+            max_radius_m = r_nm * 1852.0
+            for row in rows:
+                p_lat = float(row["lat"])
+                p_lon = float(row["lon"])
+                dist_m = haversine_distance_m(p_lat, p_lon, c_lat, c_lon)
+                if dist_m > max_radius_m:
+                    continue
+
+                alt = max(50.0, float(row["alt_agl_ft"] or 1000.0))
+                # Lower altitude flight segments (takeoff, landing, low pattern passes) have highest ground deposition
+                alt_factor = max(0.2, min(1.0, 1500.0 / (alt + 300.0)))
+                exp_score = float(row["exposure_score"] or 0.0)
+                fe_max = float(row["max_exposure_score"] or 0.0)
+                score_boost = max(0.0, min(0.6, (exp_score or fe_max) / 100.0))
+
+                intensity = round(min(1.0, max(0.15, alt_factor * 0.7 + score_boost)), 2)
+                heatmap_points.append([round(p_lat, 6), round(p_lon, 6), intensity])
+
+                # Aerodynamic downwind dispersion plume footprint
+                w_dir = row["wind_dir_deg"]
+                w_spd = row["wind_speed_mph"]
+                if w_dir is not None and w_spd and float(w_spd) > 2.0:
+                    plume_rad = math.radians((float(w_dir) + 180.0) % 360.0)
+                    drift_dist_m = min(1200.0, float(w_spd) * 0.44704 * min(60.0, alt * 0.3048 / 2.0))
+                    d_lat = (drift_dist_m / 111139.0) * math.cos(plume_rad)
+                    d_lon = (drift_dist_m / (111139.0 * math.cos(math.radians(p_lat)))) * math.sin(plume_rad)
+                    drift_lat = round(p_lat + d_lat, 6)
+                    drift_lon = round(p_lon + d_lon, 6)
+                    if haversine_distance_m(drift_lat, drift_lon, c_lat, c_lon) <= max_radius_m:
+                        heatmap_points.append([drift_lat, drift_lon, round(intensity * 0.65, 2)])
+
+        return {
+            "points": heatmap_points,
+            "count": len(heatmap_points),
+            "time_range": time_range,
+            "radius_nm": r_nm,
+            "center": {"lat": c_lat, "lon": c_lon}
+        }
 
     def get_statistics(self, time_range: str = "all") -> Dict[str, Any]:
         """Aggregate statistical summary, timeline trend, and fleet breakdown.

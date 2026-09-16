@@ -13,5 +13,6 @@
   "READSB_HOST": "",
   "READSB_PORT": 80,
   "READSB_PATH": "/tar1090/data/aircraft.json",
+  "HEATMAP_RADIUS_NM": 10.0,
   "HASS_URL": "http://homeassistant.local:8123"
 }
