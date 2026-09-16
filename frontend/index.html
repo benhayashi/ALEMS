@@ -364,34 +364,73 @@
         </div>
       </div>
 
-      <!-- Hardware: ADS-B Receiver Card -->
+      <!-- ADS-B Telemetry Source Card -->
       <div class="card" style="border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 1.25rem;">
-        <div class="card-header">
-          <span class="card-title">ADS-B Receiver (readsb / tar1090 on Pi 4)</span>
-          <button class="btn btn-secondary btn-sm" id="test-readsb-btn">Test Connection</button>
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <span class="card-title">ADS-B Aircraft Telemetry Source</span>
+          <button class="btn btn-secondary btn-sm" id="test-readsb-btn">Test Source</button>
         </div>
 
-        <div style="display: grid; grid-template-columns: 2fr 1fr 2fr; gap: 0.75rem;">
-          <div class="form-group">
-            <label class="form-label">Pi 4 IP / Hostname</label>
-            <input type="text" class="form-input" id="setting-readsb-host" placeholder="192.168.1.100 or raspberrypi.local">
+        <div class="form-group">
+          <label class="form-label">Select ADS-B Telemetry Provider</label>
+          <select class="form-input" id="setting-adsb-provider" style="background-color: var(--bg-tertiary); color: var(--text-primary);">
+            <option value="readsb_local">Local SDR Receiver / Service (readsb or tar1090 on LAN / host)</option>
+            <option value="adsb_lol">Public Community ADS-B API (adsb.lol — Free / Zero Hardware / Zero Key)</option>
+            <option value="opensky">OpenSky Network Public API (Free / Zero Hardware / Zero Key)</option>
+            <option value="custom_url">Custom Remote ADS-B API / Feed URL</option>
+          </select>
+        </div>
+
+        <!-- Sub-panel: Local readsb service (Pi / LAN / Localhost) -->
+        <div id="panel-adsb-readsb-local" style="margin-top: 0.75rem;">
+          <div style="display: grid; grid-template-columns: 2fr 1fr 2fr; gap: 0.75rem;">
+            <div class="form-group">
+              <label class="form-label">Host / IP (e.g. Pi / LAN)</label>
+              <input type="text" class="form-input" id="setting-readsb-host" placeholder="192.168.1.216 or localhost">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Port</label>
+              <input type="number" class="form-input" id="setting-readsb-port" placeholder="8081">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Path</label>
+              <input type="text" class="form-input" id="setting-readsb-path" placeholder="/data/aircraft.pb">
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Port</label>
-            <input type="number" class="form-input" id="setting-readsb-port" placeholder="80">
+
+          <div class="form-group" style="margin-top: 0.5rem;">
+            <label class="form-label">Or Direct Custom readsb Endpoint</label>
+            <input type="text" class="form-input" id="setting-readsb-url" placeholder="http://192.168.1.216:8081/data/aircraft.pb">
           </div>
-          <div class="form-group">
-            <label class="form-label">Path</label>
-            <input type="text" class="form-input" id="setting-readsb-path" placeholder="/tar1090/data/aircraft.json">
+          <div class="form-hint">Supports readsb / tar1090 running as a local service on your network (both Protobuf <code>.pb</code> and JSON <code>.json</code>).</div>
+        </div>
+
+        <!-- Sub-panel: Public Community API (adsb.lol) -->
+        <div id="panel-adsb-adsb-lol" style="display: none; margin-top: 0.75rem; padding: 0.75rem; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--border-color);">
+          <div style="font-size: 0.85rem; font-weight: 600; color: #38bdf8;">🌐 Public Community ADS-B (adsb.lol)</div>
+          <div class="form-hint" style="margin-top: 0.35rem; line-height: 1.5;">
+            Zero SDR receiver required! Automatically streams live aircraft telemetry around your configured property coordinates (<span id="adsb-lol-coords" style="color: #67e8f9;">38.272, -76.495</span>) from community receivers. No API key or signup needed.
           </div>
         </div>
 
-        <div class="form-group" style="margin-top: 0.5rem;">
-          <label class="form-label">Or Direct Custom URL</label>
-          <input type="text" class="form-input" id="setting-readsb-url" placeholder="http://192.168.1.100/tar1090/data/aircraft.json">
+        <!-- Sub-panel: OpenSky Network -->
+        <div id="panel-adsb-opensky" style="display: none; margin-top: 0.75rem; padding: 0.75rem; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--border-color);">
+          <div style="font-size: 0.85rem; font-weight: 600; color: #38bdf8;">📡 OpenSky Network Public API</div>
+          <div class="form-hint" style="margin-top: 0.35rem; line-height: 1.5;">
+            Queries OpenSky Network's global state vectors around your property's geographic bounding box. Free, public, zero hardware required.
+          </div>
         </div>
 
-        <div id="readsb-test-status" style="font-size: 0.8rem; margin-top: 0.35rem; display: none; padding: 0.4rem 0.6rem; border-radius: 4px;"></div>
+        <!-- Sub-panel: Custom ADS-B URL -->
+        <div id="panel-adsb-custom-url" style="display: none; margin-top: 0.75rem;">
+          <div class="form-group">
+            <label class="form-label">Custom ADS-B API URL</label>
+            <input type="text" class="form-input" id="setting-adsb-custom-url" placeholder="https://api.example.com/v2/point/{lat}/{lon}/{radius}">
+            <div class="form-hint">Supports placeholders <code>{lat}</code>, <code>{lon}</code>, and <code>{radius}</code>. Expects readsb/tar1090 JSON schema.</div>
+          </div>
+        </div>
+
+        <div id="readsb-test-status" style="font-size: 0.8rem; margin-top: 0.45rem; display: none; padding: 0.4rem 0.6rem; border-radius: 4px;"></div>
       </div>
 
       <!-- Hardware: Weather Station Card -->
@@ -566,9 +605,9 @@
   </main>
 
   <!-- JavaScript Modules with cache-busting -->
-  <script src="/static/js/map.js?v=2.7"></script>
-  <script src="/static/js/charts.js?v=2.7"></script>
-  <script src="/static/js/export.js?v=2.7"></script>
-  <script src="/static/js/app.js?v=2.7"></script>
+  <script src="/static/js/map.js?v=2.8"></script>
+  <script src="/static/js/charts.js?v=2.8"></script>
+  <script src="/static/js/export.js?v=2.8"></script>
+  <script src="/static/js/app.js?v=2.8"></script>
 </body>
 </html>

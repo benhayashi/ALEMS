@@ -37,20 +37,21 @@ An open-source, standalone, evidentiary-grade monitoring platform designed to qu
 
 ---
 
-## Standalone Docker Deployment
+## Standalone Docker Deployment (Raspberry Pi 4 & x86_64)
 
-ALEMS is fully containerized and can run standalone on any server, desktop, or Raspberry Pi.
+ALEMS is fully containerized with automated multi-architecture Docker images (`linux/arm64` for Raspberry Pi 4 and `linux/amd64` for PC/servers) published directly to **GitHub Container Registry (GHCR)**.
 
 ```bash
-# 1. Clone the repository
+# 1. Download docker-compose.yml (or clone the repository)
 git clone https://github.com/benhayashi/ALEMS.git
 cd ALEMS
 
-# 2. Start ALEMS container via Docker Compose
-docker compose up -d --build
+# 2. Pull pre-built multi-arch image and launch
+docker compose pull
+docker compose up -d
 ```
 
-Access the Web Dashboard at: **`http://localhost:8085`** (or your server's IP address on port 8085).
+Access the Web Dashboard at: **`http://localhost:8085`** (or your Raspberry Pi's / server's IP address on port 8085).
 
 All configuration settings, the SQLite database (`data/alems.db`), and generated CSV exports (`exports/`) persist automatically on your host machine.
 
@@ -60,7 +61,9 @@ All configuration settings, the SQLite database (`data/alems.db`), and generated
 
 ### 1. Prerequisites
 - Python 3.10+
-- `readsb` receiver running on your local network (e.g. Raspberry Pi 4).
+- **ADS-B Telemetry Source** (choose one):
+  - **Local Service (Current Setup):** `readsb` or `tar1090` running as a local service on your network (e.g. on a Raspberry Pi with an SDR antenna).
+  - **Public Community API (Zero Hardware Required):** Built-in support for free community ADS-B feeds (e.g. `adsb.lol` or OpenSky Network) that stream live traffic around your coordinates with zero hardware or API keys.
 
 ### 2. Setup
 ```bash
@@ -121,11 +124,19 @@ Settings can be customized anytime directly in the **Settings** tab of the Web G
 
 ## Hardware & Sensor Integration
 
-### Raspberry Pi 4 (`readsb`)
-1. In `readsb` / `tar1090`, telemetry is accessible at:
-   - `http://<YOUR_PI_IP>/tar1090/data/aircraft.json`
-   - or `http://<YOUR_PI_IP>:8080/data/aircraft.json`
-2. Enter this URL in the ALEMS Settings tab and click **Save & Apply Configuration**.
+### ADS-B Telemetry Options (Local Service or Public API)
+ALEMS supports multiple ADS-B telemetry options to fit your setup:
+1. **Local SDR Service (Current Setup):** If you run `readsb` or `tar1090` locally (e.g. on a Raspberry Pi or local network machine connected to an RTL-SDR antenna):
+   - In the **Settings** tab, select **Local SDR Receiver / Service**.
+   - Enter your local service IP/port (e.g. `http://192.168.1.216:8081/data/aircraft.pb` or `http://raspberrypi.local/tar1090/data/aircraft.json`).
+   - Supports both Protobuf (`.pb`) and JSON formats.
+2. **Public Community ADS-B API (Zero Hardware Required):**
+   - In the **Settings** tab, select **Public Community ADS-B API (`adsb.lol`)**.
+   - ALEMS will automatically query live aircraft positions around your configured property coordinates using community receivers with zero API keys or antenna hardware needed.
+3. **OpenSky Network Public API:**
+   - Queries OpenSky Network's global state vectors around your property's bounding box.
+4. **Custom Remote ADS-B API:**
+   - Point to any custom HTTP(S) endpoint with `{lat}`, `{lon}`, and `{radius}` placeholders.
 
 ### Ecowitt Weather Station (via Home Assistant)
 1. Ensure your Ecowitt Home Assistant integration provides:

@@ -11,3 +11,18 @@ def test_normalize_readsb_url():
 def test_decode_readsb_empty_buf():
     res = decode_readsb_protobuf(b"")
     assert res == []
+
+def test_adsb_client_providers():
+    from alems.collectors.adsb_client import ADSBClient
+    client_local = ADSBClient(provider="readsb_local")
+    assert client_local.provider == "readsb_local"
+
+    client_lol = ADSBClient(provider="adsb_lol")
+    assert client_lol.provider == "adsb_lol"
+
+    client_os = ADSBClient(provider="opensky")
+    assert client_os.provider == "opensky"
+
+    client_custom = ADSBClient(endpoint_url="http://example.com/aircraft.json", provider="custom_url")
+    assert client_custom.provider == "custom_url"
+

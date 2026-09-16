@@ -180,7 +180,21 @@ function applyConfigToUI(cfg) {
   const simToggle = document.getElementById('setting-sim-toggle');
   if (simToggle) simToggle.checked = cfg.simulation_mode || false;
 
-  // ADS-B Hardware Inputs
+  // ADS-B Hardware / Source Inputs
+  const adsbProvider = document.getElementById('setting-adsb-provider');
+  if (adsbProvider && cfg.endpoints) {
+    adsbProvider.value = cfg.endpoints.adsb_provider || 'readsb_local';
+    updateAdsbPanels(adsbProvider.value);
+  }
+
+  const adsbCustomUrl = document.getElementById('setting-adsb-custom-url');
+  if (adsbCustomUrl && cfg.endpoints) adsbCustomUrl.value = cfg.endpoints.adsb_custom_url || '';
+
+  const adsbLolCoords = document.getElementById('adsb-lol-coords');
+  if (adsbLolCoords && cfg.home) {
+    adsbLolCoords.textContent = `${cfg.home.lat}, ${cfg.home.lon}`;
+  }
+
   const readsbUrl = document.getElementById('setting-readsb-url');
   if (readsbUrl && cfg.endpoints) readsbUrl.value = cfg.endpoints.readsb_url || '';
 
@@ -213,6 +227,18 @@ function applyConfigToUI(cfg) {
   if (pushIpEl) {
     pushIpEl.textContent = window.location.hostname;
   }
+}
+
+function updateAdsbPanels(selectedProvider) {
+  const pReadsb = document.getElementById('panel-adsb-readsb-local');
+  const pAdsbLol = document.getElementById('panel-adsb-adsb-lol');
+  const pOpenSky = document.getElementById('panel-adsb-opensky');
+  const pCustom = document.getElementById('panel-adsb-custom-url');
+
+  if (pReadsb) pReadsb.style.display = (selectedProvider === 'readsb_local') ? 'block' : 'none';
+  if (pAdsbLol) pAdsbLol.style.display = (selectedProvider === 'adsb_lol') ? 'block' : 'none';
+  if (pOpenSky) pOpenSky.style.display = (selectedProvider === 'opensky') ? 'block' : 'none';
+  if (pCustom) pCustom.style.display = (selectedProvider === 'custom_url') ? 'block' : 'none';
 }
 
 function updateWeatherPanels(selectedProvider) {
@@ -741,24 +767,38 @@ function setupSettingsHandlers() {
     });
   }
 
+  // 4b. ADS-B Provider Selector onchange
+  const adsbProviderSelect = document.getElementById('setting-adsb-provider');
+  if (adsbProviderSelect) {
+    adsbProviderSelect.addEventListener('change', (e) => {
+      updateAdsbPanels(e.target.value);
+    });
+  }
+
   // 5. Test ADS-B Connection Button
   const testAdsbBtn = document.getElementById('test-readsb-btn');
   const adsbStatus = document.getElementById('readsb-test-status');
   if (testAdsbBtn) {
     testAdsbBtn.addEventListener('click', async () => {
+      const provider = document.getElementById('setting-adsb-provider')?.value || 'readsb_local';
       const host = document.getElementById('setting-readsb-host')?.value.trim();
       const port = document.getElementById('setting-readsb-port')?.value.trim();
       const path = document.getElementById('setting-readsb-path')?.value.trim();
       const url = document.getElementById('setting-readsb-url')?.value.trim();
+      const customUrl = document.getElementById('setting-adsb-custom-url')?.value.trim();
 
       testAdsbBtn.disabled = true;
       testAdsbBtn.textContent = "Testing...";
       if (adsbStatus) adsbStatus.style.display = 'none';
 
       try {
-        let q = `/api/test/readsb?`;
-        if (url) q += `url=${encodeURIComponent(url)}`;
-        else q += `host=${encodeURIComponent(host || 'localhost')}&port=${encodeURIComponent(port || '80')}&path=${encodeURIComponent(path || '/tar1090/data/aircraft.json')}`;
+        let q = `/api/test/adsb?provider=${encodeURIComponent(provider)}`;
+        if (provider === 'custom_url') {
+          q += `&url=${encodeURIComponent(customUrl || '')}`;
+        } else if (provider === 'readsb_local') {
+          if (url) q += `&url=${encodeURIComponent(url)}`;
+          else q += `&host=${encodeURIComponent(host || 'localhost')}&port=${encodeURIComponent(port || '80')}&path=${encodeURIComponent(path || '/tar1090/data/aircraft.json')}`;
+        }
 
         const resp = await fetch(q);
         const data = await resp.json();
@@ -767,12 +807,12 @@ function setupSettingsHandlers() {
           if (data.success) {
             adsbStatus.style.background = 'rgba(16, 185, 129, 0.15)';
             adsbStatus.style.color = '#6ee7b7';
-            adsbStatus.textContent = `✓ Connected! ${data.aircraft_count} aircraft currently tracked (${data.latency_ms} ms latency)`;
+            adsbStatus.textContent = `✓ Connected to ${data.provider}! ${data.aircraft_count} aircraft currently tracked (${data.latency_ms} ms latency)`;
             showToast(`✓ ADS-B connected: ${data.aircraft_count} aircraft`);
           } else {
             adsbStatus.style.background = 'rgba(239, 68, 68, 0.15)';
             adsbStatus.style.color = '#fca5a5';
-            adsbStatus.textContent = `✗ Connection failed to ${data.url}: ${data.error}`;
+            adsbStatus.textContent = `✗ Connection failed (${data.provider}): ${data.error}`;
           }
         }
       } catch (err) {
@@ -784,7 +824,7 @@ function setupSettingsHandlers() {
         }
       } finally {
         testAdsbBtn.disabled = false;
-        testAdsbBtn.textContent = "Test Connection";
+        testAdsbBtn.textContent = "Test Source";
       }
     });
   }
@@ -857,6 +897,8 @@ function setupSettingsHandlers() {
         airport_elev_ft: parseFloat(document.getElementById('setting-airport-elev')?.value) || undefined,
         runway_heading_1: parseFloat(document.getElementById('setting-runway-hdg1')?.value) || undefined,
         runway_heading_2: parseFloat(document.getElementById('setting-runway-hdg2')?.value) || undefined,
+        adsb_provider: document.getElementById('setting-adsb-provider')?.value || undefined,
+        adsb_custom_url: document.getElementById('setting-adsb-custom-url')?.value.trim() || undefined,
         readsb_url: document.getElementById('setting-readsb-url')?.value.trim() || undefined,
         readsb_host: document.getElementById('setting-readsb-host')?.value.trim() || undefined,
         readsb_port: parseInt(document.getElementById('setting-readsb-port')?.value) || undefined,

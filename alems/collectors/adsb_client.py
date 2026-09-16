@@ -125,20 +125,37 @@ def normalize_readsb_url(url_or_host: str) -> str:
     return s
 
 class ADSBClient:
-    """Client for reading live ADS-B data from readsb (both JSON and Protobuf)."""
+    """Client for reading live ADS-B telemetry from local receivers (readsb) or public community APIs."""
 
-    def __init__(self, endpoint_url: Optional[str] = None):
-        raw_url = endpoint_url or config.READSB_URL
-        self.endpoint_url = normalize_readsb_url(raw_url)
+    def __init__(self, endpoint_url: Optional[str] = None, provider: Optional[str] = None):
+        self.provider = provider or config.ADSB_PROVIDER
+        raw_url = endpoint_url or (config.ADSB_CUSTOM_URL if self.provider == "custom_url" else config.READSB_URL)
+        self.endpoint_url = normalize_readsb_url(raw_url) if self.provider == "readsb_local" else raw_url
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "ALEMS-Lead-Monitor/1.0"})
+        self.session.headers.update({"User-Agent": "ALEMS-Lead-Monitor/1.0 (https://github.com/benhayashi/ALEMS)"})
         self.last_fetch_time: float = 0.0
         self.is_connected: bool = False
         self.last_error: Optional[str] = None
 
     def fetch_raw_aircraft(self) -> List[Dict[str, Any]]:
-        """Fetch latest aircraft data from readsb receiver (JSON or Protobuf)."""
+        """Fetch latest aircraft data from configured provider."""
+        provider = config.ADSB_PROVIDER
+
+        if provider == "adsb_lol":
+            return self._fetch_adsb_lol()
+        elif provider == "opensky":
+            return self._fetch_opensky()
+        elif provider == "custom_url":
+            return self._fetch_custom_url()
+        else:
+            return self._fetch_readsb_local()
+
+    def _fetch_readsb_local(self) -> List[Dict[str, Any]]:
+        """Fetch from local readsb/tar1090 service (Protobuf or JSON)."""
         try:
+            if not self.endpoint_url:
+                self.endpoint_url = normalize_readsb_url(config.READSB_URL)
+
             if self.endpoint_url.startswith("file://") or self.endpoint_url.startswith("/"):
                 path = self.endpoint_url.replace("file://", "")
                 import json
@@ -147,7 +164,7 @@ class ADSBClient:
                 return data.get("aircraft", [])
 
             resp = self.session.get(self.endpoint_url, timeout=3.0)
-            
+
             # If 404, try automatic fallback between .pb and .json
             if resp.status_code == 404:
                 fallback_url = None
@@ -157,7 +174,7 @@ class ADSBClient:
                     fallback_url = self.endpoint_url.replace("/data/aircraft.json", "/data/aircraft.pb")
                 elif "/data/aircraft.pb" in self.endpoint_url:
                     fallback_url = self.endpoint_url.replace("/data/aircraft.pb", "/tar1090/data/aircraft.json")
-                
+
                 if fallback_url:
                     resp = self.session.get(fallback_url, timeout=3.0)
                     if resp.status_code == 200:
@@ -183,13 +200,89 @@ class ADSBClient:
             self.last_error = str(e)
             return []
 
+    def _fetch_adsb_lol(self) -> List[Dict[str, Any]]:
+        """Fetch from community adsb.lol API (Free / Zero Hardware)."""
+        try:
+            radius = max(25.0, config.ACTIVE_MONITOR_RADIUS_NM * 3)
+            url = f"https://api.adsb.lol/v2/point/{config.HOME_LAT}/{config.HOME_LON}/{int(radius)}"
+            self.endpoint_url = url
+            resp = self.session.get(url, timeout=4.0)
+            resp.raise_for_status()
+            data = resp.json()
+            aircraft_list = data.get("ac", []) or data.get("aircraft", [])
             self.is_connected = True
             self.last_error = None
             self.last_fetch_time = time.time()
-            return data.get("aircraft", [])
+            return aircraft_list
         except Exception as e:
             self.is_connected = False
-            self.last_error = str(e)
+            self.last_error = f"adsb.lol: {e}"
+            return []
+
+    def _fetch_opensky(self) -> List[Dict[str, Any]]:
+        """Fetch from OpenSky Network Public API (Free / Zero Hardware)."""
+        try:
+            lat = config.HOME_LAT
+            lon = config.HOME_LON
+            delta = max(0.5, config.ACTIVE_MONITOR_RADIUS_NM / 60.0 * 3.0)
+            url = f"https://opensky-network.org/api/states/all?lamin={round(lat - delta, 4)}&lomin={round(lon - delta, 4)}&lamax={round(lat + delta, 4)}&lomax={round(lon + delta, 4)}"
+            self.endpoint_url = url
+            resp = self.session.get(url, timeout=5.0)
+            resp.raise_for_status()
+            data = resp.json()
+            states = data.get("states", []) or []
+            aircraft_list = []
+            for s in states:
+                if not s or len(s) < 12 or s[5] is None or s[6] is None:
+                    continue
+                aircraft_list.append({
+                    "hex": (s[0] or "").lower(),
+                    "flight": (s[1] or "").strip(),
+                    "lon": float(s[5]),
+                    "lat": float(s[6]),
+                    "alt_baro": round(float(s[7]) * 3.28084, 0) if s[7] is not None else None,
+                    "altitude": round(float(s[7]) * 3.28084, 0) if s[7] is not None else None,
+                    "gs": round(float(s[9]) * 1.94384, 1) if s[9] is not None else None,
+                    "speed": round(float(s[9]) * 1.94384, 1) if s[9] is not None else None,
+                    "track": round(float(s[10]), 1) if s[10] is not None else None,
+                    "baro_rate": round(float(s[11]) * 196.85, 0) if s[11] is not None else None
+                })
+            self.is_connected = True
+            self.last_error = None
+            self.last_fetch_time = time.time()
+            return aircraft_list
+        except Exception as e:
+            self.is_connected = False
+            self.last_error = f"OpenSky: {e}"
+            return []
+
+    def _fetch_custom_url(self) -> List[Dict[str, Any]]:
+        """Fetch from a custom user-defined ADS-B API URL."""
+        try:
+            url = config.ADSB_CUSTOM_URL or self.endpoint_url
+            if not url:
+                self.is_connected = False
+                self.last_error = "No custom ADS-B URL specified"
+                return []
+            radius = max(25.0, config.ACTIVE_MONITOR_RADIUS_NM * 3)
+            formatted_url = url.replace("{lat}", str(config.HOME_LAT)).replace("{lon}", str(config.HOME_LON)).replace("{radius}", str(int(radius))).replace("{dist}", str(int(radius)))
+            self.endpoint_url = formatted_url
+            resp = self.session.get(formatted_url, timeout=4.0)
+            resp.raise_for_status()
+            data = resp.json()
+            if isinstance(data, list):
+                aircraft_list = data
+            elif isinstance(data, dict):
+                aircraft_list = data.get("aircraft") or data.get("ac") or data.get("states") or []
+            else:
+                aircraft_list = []
+            self.is_connected = True
+            self.last_error = None
+            self.last_fetch_time = time.time()
+            return aircraft_list
+        except Exception as e:
+            self.is_connected = False
+            self.last_error = f"Custom URL: {e}"
             return []
 
     def get_aircraft_in_range(

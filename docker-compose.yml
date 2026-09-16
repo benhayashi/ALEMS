@@ -2,10 +2,10 @@ version: '3.8'
 
 services:
   alems:
+    image: ghcr.io/benhayashi/alems:latest
     build:
       context: .
       dockerfile: Dockerfile
-    image: alems:latest
     container_name: alems-lead-monitor
     restart: unless-stopped
     ports:

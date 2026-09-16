@@ -85,6 +85,8 @@ def get_config():
             "plume_half_angle_deg": config.PLUME_DISPERSION_HALF_ANGLE_DEG
         },
         "endpoints": {
+            "adsb_provider": config.ADSB_PROVIDER,
+            "adsb_custom_url": config.ADSB_CUSTOM_URL,
             "readsb_url": config.READSB_URL,
             "readsb_host": config.READSB_HOST,
             "readsb_port": config.READSB_PORT,
@@ -114,6 +116,8 @@ class ConfigUpdateRequest(BaseModel):
     runway_length_ft: Optional[float] = None
     active_radius_nm: Optional[float] = None
     flyover_radius_nm: Optional[float] = None
+    adsb_provider: Optional[str] = None
+    adsb_custom_url: Optional[str] = None
     readsb_url: Optional[str] = None
     readsb_host: Optional[str] = None
     readsb_port: Optional[int] = None
@@ -159,6 +163,12 @@ async def update_config(req: ConfigUpdateRequest):
     if req.flyover_radius_nm is not None:
         updates["FLYOVER_EVENT_RADIUS_NM"] = req.flyover_radius_nm
 
+    if req.adsb_provider is not None:
+        updates["ADSB_PROVIDER"] = req.adsb_provider
+        adsb_client.provider = req.adsb_provider
+    if req.adsb_custom_url is not None:
+        updates["ADSB_CUSTOM_URL"] = req.adsb_custom_url
+
     if req.readsb_host is not None:
         updates["READSB_HOST"] = req.readsb_host
     if req.readsb_port is not None:
@@ -176,7 +186,7 @@ async def update_config(req: ConfigUpdateRequest):
         if not host.startswith("http://") and not host.startswith("https://"):
             host = f"http://{host}"
         p = f":{port}" if port and port not in (80, 443) else ""
-        clean_path = path if path.startswith("/") else f"/{path}"
+        clean_path = path if path and path.startswith("/") else f"/{path}"
         constructed_url = f"{host}{p}{clean_path}"
         updates["READSB_URL"] = constructed_url
         adsb_client.endpoint_url = constructed_url
@@ -231,39 +241,62 @@ async def receive_ecowitt_push(request: Request):
     data = weather_collector.handle_ecowitt_push_data(params)
     return {"status": "success", "received_fields": len(params), "live_weather": data}
 
+@app.get("/api/test/adsb")
 @app.get("/api/test/readsb")
-def test_readsb_connection(url: Optional[str] = None, host: Optional[str] = None, port: Optional[int] = 80, path: Optional[str] = "/tar1090/data/aircraft.json"):
-    """Test connectivity to readsb receiver and return tracked aircraft count."""
+def test_adsb_connection(
+    provider: Optional[str] = None,
+    url: Optional[str] = None,
+    host: Optional[str] = None,
+    port: Optional[int] = 80,
+    path: Optional[str] = "/tar1090/data/aircraft.json"
+):
+    """Test connectivity to chosen ADS-B provider (local readsb, adsb.lol, opensky, custom)."""
+    sel_provider = provider or config.ADSB_PROVIDER
     target_url = url
-    if not target_url and host:
-        clean_host = host.strip()
-        if not clean_host.startswith("http://") and not clean_host.startswith("https://"):
-            clean_host = f"http://{clean_host}"
-        p = f":{port}" if port and port not in (80, 443) else ""
-        clean_path = path if path and path.startswith("/") else f"/{path or 'tar1090/data/aircraft.json'}"
-        target_url = f"{clean_host}{p}{clean_path}"
-    
-    target_url = normalize_readsb_url(target_url or config.READSB_URL)
-    if not target_url:
-        return {"success": False, "error": "No ADS-B URL or IP provided"}
+    if sel_provider == "readsb_local":
+        if not target_url and host:
+            clean_host = host.strip()
+            if not clean_host.startswith("http://") and not clean_host.startswith("https://"):
+                clean_host = f"http://{clean_host}"
+            p = f":{port}" if port and port not in (80, 443) else ""
+            clean_path = path if path and path.startswith("/") else f"/{path or 'tar1090/data/aircraft.json'}"
+            target_url = f"{clean_host}{p}{clean_path}"
+        target_url = normalize_readsb_url(target_url or config.READSB_URL)
+    elif sel_provider == "custom_url":
+        target_url = url or config.ADSB_CUSTOM_URL
 
     try:
-        client = ADSBClient(endpoint_url=target_url)
+        orig_provider = config.ADSB_PROVIDER
+        if provider:
+            config.ADSB_PROVIDER = provider
+        if target_url and sel_provider == "custom_url":
+            config.ADSB_CUSTOM_URL = target_url
+
+        client = ADSBClient(endpoint_url=target_url, provider=sel_provider)
         t0 = time.time()
         ac_list = client.fetch_raw_aircraft()
         elapsed_ms = round((time.time() - t0) * 1000, 1)
+
+        config.ADSB_PROVIDER = orig_provider
+
         if client.is_connected:
             return {
                 "success": True,
+                "provider": sel_provider,
                 "url": client.endpoint_url,
                 "status_code": 200,
                 "aircraft_count": len(ac_list),
                 "latency_ms": elapsed_ms
             }
         else:
-            return {"success": False, "url": client.endpoint_url or target_url, "error": client.last_error or "Failed to connect to readsb"}
+            return {
+                "success": False,
+                "provider": sel_provider,
+                "url": client.endpoint_url or target_url,
+                "error": client.last_error or f"Failed to connect to {sel_provider}"
+            }
     except Exception as e:
-        return {"success": False, "url": target_url, "error": str(e)}
+        return {"success": False, "provider": sel_provider, "url": target_url, "error": str(e)}
 
 @app.get("/api/test/ecowitt")
 def test_ecowitt_connection(ip: Optional[str] = None, port: Optional[int] = 80):

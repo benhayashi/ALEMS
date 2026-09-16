@@ -33,7 +33,10 @@ class Settings(BaseModel):
     FLYOVER_EVENT_RADIUS_NM: float = float(os.getenv("EVENT_RADIUS_NM", "1.5"))    # Event trigger proximity
     MAX_TRACK_AGE_SECONDS: int = int(os.getenv("TRACK_AGE_SEC", "30"))             # Inactivity timeout
 
-    # ADS-B Receiver Configuration (readsb on Pi 4)
+    # ADS-B Telemetry Source Configuration
+    # Options: "readsb_local" (local SDR service), "adsb_lol" (free public API), "opensky" (OpenSky public API), "custom_url"
+    ADSB_PROVIDER: str = os.getenv("ADSB_PROVIDER", "readsb_local")
+    ADSB_CUSTOM_URL: str = os.getenv("ADSB_CUSTOM_URL", "")
     READSB_URL: str = os.getenv("READSB_URL", "http://raspberrypi.local/tar1090/data/aircraft.json")
     READSB_HOST: str = os.getenv("READSB_HOST", "")
     READSB_PORT: int = int(os.getenv("READSB_PORT", "80"))
