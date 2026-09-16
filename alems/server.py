@@ -641,9 +641,9 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             msg = await queue.get()
             await websocket.send_json(msg)
-    except WebSocketDisconnect:
-        daemon.unregister_subscriber(queue)
-    except Exception:
+    except (WebSocketDisconnect, Exception):
+        pass
+    finally:
         daemon.unregister_subscriber(queue)
 
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
