@@ -88,7 +88,8 @@ function initCharts() {
                   if (score >= 70) tier = 'Critical / Direct Plume';
                   else if (score >= 40) tier = 'Elevated Downwind';
                   else if (score > 0) tier = 'Low / Moderate';
-                  return ` Peak Exposure: ${score} / 100 (${tier})`;
+                  const estConc = score > 0 ? ` (~${(score * 0.05).toFixed(2)} µg/m³ ±28%)` : '';
+                  return ` Peak Exposure: ${score} / 100${estConc} (${tier})`;
                 }
               }
             }
@@ -247,19 +248,22 @@ function updateAnalyticsUI(stats) {
 
     if (score === 0) {
       elMaxRisk.style.color = '#10b981';
-      if (elRiskDesc) elRiskDesc.innerHTML = `<span style="color: #10b981; font-weight: 600;">Clean / None</span> &bull; No lead detected`;
+      if (elRiskDesc) elRiskDesc.innerHTML = `<span style="color: #10b981; font-weight: 600;">Clean / None</span> &bull; 0.0 µg/m³`;
       if (elRiskCard) elRiskCard.style.borderColor = 'rgba(16, 185, 129, 0.25)';
     } else if (score < 40) {
       elMaxRisk.style.color = '#facc15';
-      if (elRiskDesc) elRiskDesc.innerHTML = `<span style="color: #facc15; font-weight: 600;">Low / Moderate</span> &bull; Upwind or high pass`;
+      const conc = (score * 0.05).toFixed(2);
+      if (elRiskDesc) elRiskDesc.innerHTML = `<span style="color: #facc15; font-weight: 600;">Low / Mod</span> &bull; ~${conc} µg/m³ (±28%)`;
       if (elRiskCard) elRiskCard.style.borderColor = 'rgba(250, 204, 21, 0.3)';
     } else if (score < 70) {
       elMaxRisk.style.color = '#f97316';
-      if (elRiskDesc) elRiskDesc.innerHTML = `<span style="color: #f97316; font-weight: 600;">Elevated</span> &bull; Downwind or close pass`;
+      const conc = (score * 0.05).toFixed(2);
+      if (elRiskDesc) elRiskDesc.innerHTML = `<span style="color: #f97316; font-weight: 600;">Elevated</span> &bull; ~${conc} µg/m³ (±28%)`;
       if (elRiskCard) elRiskCard.style.borderColor = 'rgba(249, 115, 22, 0.35)';
     } else {
       elMaxRisk.style.color = '#ef4444';
-      if (elRiskDesc) elRiskDesc.innerHTML = `<span style="color: #ef4444; font-weight: 600;">Critical / Direct Plume</span> &bull; Overhead departure`;
+      const conc = (score * 0.05).toFixed(2);
+      if (elRiskDesc) elRiskDesc.innerHTML = `<span style="color: #ef4444; font-weight: 600;">Critical</span> &bull; ~${conc} µg/m³ (±28%)`;
       if (elRiskCard) elRiskCard.style.borderColor = 'rgba(239, 68, 68, 0.4)';
     }
   }

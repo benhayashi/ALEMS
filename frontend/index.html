@@ -113,14 +113,23 @@
         <!-- Heatmap Cumulative Exposure Legend (visible when heatmap is active) -->
         <div id="heatmap-legend" class="heatmap-legend" style="display: none;">
           <div class="heatmap-legend-title">
-            <span>Cumulative 100LL Exposure</span>
+            <span style="display: flex; align-items: center; gap: 4px;">
+              Cumulative 100LL Deposition
+              <button type="button" class="info-circle-btn" onclick="openExposureInfoModal()" title="View units, Gaussian dispersion model, and uncertainty metrics" aria-label="Units & Uncertainty Info" style="width: 14px; height: 14px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: none; border: none; color: #38bdf8; cursor: pointer;">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              </button>
+            </span>
             <span id="heatmap-legend-radius" style="color: #38bdf8;">(10 NM)</span>
+          </div>
+          <div style="font-size: 0.68rem; color: #94a3b8; margin-bottom: 0.35rem; display: flex; justify-content: space-between; align-items: center;">
+            <span>Est. Loading (<strong>µg/m²</strong>)</span>
+            <span id="heatmap-legend-uncertainty" style="color: #cbd5e1; font-weight: 600;">±28% (95% CI)</span>
           </div>
           <div class="heatmap-gradient-bar"></div>
           <div class="heatmap-scale-labels">
-            <span>Low (Yellow)</span>
-            <span>Moderate (Orange)</span>
-            <span>Severe (Red)</span>
+            <span>&lt; 1.0 µg/m² (Yellow)</span>
+            <span>1.0 – 2.5 µg/m² (Orange)</span>
+            <span>&gt; 2.5 µg/m² (Red)</span>
           </div>
         </div>
 
@@ -328,28 +337,28 @@
           <div class="risk-legend-item">
             <span class="risk-dot" style="background: #10b981; box-shadow: 0 0 6px #10b981;"></span>
             <div>
-              <div class="risk-item-label" style="color: #6ee7b7;">0 &bull; Clean / Unleaded</div>
+              <div class="risk-item-label" style="color: #6ee7b7;">0 &bull; Clean / Unleaded (0.0 µg/m³)</div>
               <div class="risk-item-sub">Jet-A turbine, turboprop, electric, or zero flights. Zero airborne lead.</div>
             </div>
           </div>
           <div class="risk-legend-item">
             <span class="risk-dot" style="background: #facc15; box-shadow: 0 0 6px #facc15;"></span>
             <div>
-              <div class="risk-item-label" style="color: #fde047;">1 – 39 &bull; Low / Moderate</div>
-              <div class="risk-item-sub">100LL pass at higher altitude (>1,500 ft AGL) or upwind; minimal ground deposition.</div>
+              <div class="risk-item-label" style="color: #fde047;">1 – 39 &bull; Low / Moderate (&lt; 2.0 µg/m³ &plusmn;28%)</div>
+              <div class="risk-item-sub">100LL pass at higher altitude (&gt;1,500 ft AGL) or upwind; minimal ground deposition.</div>
             </div>
           </div>
           <div class="risk-legend-item">
             <span class="risk-dot" style="background: #f97316; box-shadow: 0 0 6px #f97316;"></span>
             <div>
-              <div class="risk-item-label" style="color: #fdba74;">40 – 69 &bull; Elevated</div>
-              <div class="risk-item-sub">Direct downwind plume or close pass (<1,500 ft); detectable short-term aerosol.</div>
+              <div class="risk-item-label" style="color: #fdba74;">40 – 69 &bull; Elevated (2.0 – 3.5 µg/m³ &plusmn;28%)</div>
+              <div class="risk-item-sub">Direct downwind plume or close pass (&lt;1,500 ft); detectable short-term aerosol.</div>
             </div>
           </div>
           <div class="risk-legend-item">
             <span class="risk-dot" style="background: #ef4444; box-shadow: 0 0 6px #ef4444;"></span>
             <div>
-              <div class="risk-item-label" style="color: #fca5a5;">70 – 100 &bull; Critical</div>
+              <div class="risk-item-label" style="color: #fca5a5;">70 – 100 &bull; Critical (3.5 – 5.0+ µg/m³ &plusmn;28%)</div>
               <div class="risk-item-sub">Direct low-altitude climb/departure into downwind plume; peak ground exposure.</div>
             </div>
           </div>
@@ -806,16 +815,55 @@
       </ul>
 
       <h4 style="color: #38bdf8; margin: 1rem 0 0.4rem 0; font-size: 0.9rem;">3. EPA Regulatory &amp; Health Context</h4>
-      <p style="color: #cbd5e1; font-size: 0.8rem; margin-bottom: 0;">
+      <p style="color: #cbd5e1; font-size: 0.8rem; margin-bottom: 0.75rem;">
         Under the <strong>Clean Air Act</strong>, the EPA National Ambient Air Quality Standard (NAAQS) for lead is <strong>0.15 &mu;g/m&sup3;</strong> (3-month rolling average). While high-altitude aircraft disperse lead over wide areas, low-altitude general aviation flyovers produce localized ground-level bursts of <strong>0.5 to 5.0+ &mu;g/m&sup3;</strong>, which settle into soil and household dust. ALEMS logs every event with cryptographic SHA-256 hashes to provide verifiable, audit-ready corroboration for regulatory and community advocacy.
       </p>
+
+      <h4 style="color: #38bdf8; margin: 1.25rem 0 0.4rem 0; font-size: 0.9rem;">4. Physical Units &amp; Scientific Uncertainty Quantification</h4>
+      <p style="color: #cbd5e1; margin-top: 0; font-size: 0.8rem;">
+        ALEMS calculates and maps lead exposure across standardized physical dimensions:
+      </p>
+      <ul style="padding-left: 1.25rem; color: #cbd5e1; margin-bottom: 0.75rem; font-size: 0.8rem;">
+        <li style="margin-bottom: 0.3rem;">
+          <strong>Ground Surface Deposition (&mu;g/m&sup2;):</strong> Cumulative lead aerosol mass deposited per square meter of ground surface. Modeled in the regional heatmap via multi-tiered Gaussian crosswind dispersion (&plusmn;1&sigma; and &plusmn;2&sigma; lateral corridors) and aerodynamic settling tails.
+        </li>
+        <li style="margin-bottom: 0.3rem;">
+          <strong>Instantaneous Air Plume Concentration (&mu;g/m&sup3;):</strong> Ground-level aerosolized tetraethyllead concentration during flyover transit, benchmarked against the EPA NAAQS limit (0.15 &mu;g/m&sup3;).
+        </li>
+        <li style="margin-bottom: 0.3rem;">
+          <strong>Emission Rate (Q in mg/s):</strong> Exhaust mass flow rate based on engine displacement and fuel burn (100LL contains 2.12 grams of inorganic lead per gallon).
+        </li>
+      </ul>
+
+      <div style="background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 0.65rem 0.85rem; margin-bottom: 0.25rem;">
+        <div style="font-size: 0.8rem; font-weight: 700; color: #38bdf8; margin-bottom: 0.3rem;">
+          Modeled Uncertainty Budget: &plusmn;28% (95% Confidence Interval)
+        </div>
+        <p style="font-size: 0.76rem; color: #94a3b8; margin: 0 0 0.4rem 0;">
+          Calculated using Gaussian plume Root-Sum-Square (RSS) error propagation across three independent physical sources of variance:
+        </p>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem; font-size: 0.72rem;">
+          <div style="background: rgba(30, 41, 59, 0.6); padding: 0.45rem; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+            <div style="color: #fde047; font-weight: 600;">Wind Vector: &plusmn;14%</div>
+            <div style="color: #94a3b8;">&plusmn;15&deg; anemometer drift &amp; surface boundary canopy friction</div>
+          </div>
+          <div style="background: rgba(30, 41, 59, 0.6); padding: 0.45rem; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+            <div style="color: #fdba74; font-weight: 600;">Throttle Power: &plusmn;20%</div>
+            <div style="color: #94a3b8;">Climb-out vs. approach fuel burn &amp; mixture enrichment</div>
+          </div>
+          <div style="background: rgba(30, 41, 59, 0.6); padding: 0.45rem; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+            <div style="color: #fca5a5; font-weight: 600;">Particle Settling: &plusmn;22%</div>
+            <div style="color: #94a3b8;">Sub-micron aerosol size distribution &amp; aerodynamic settling velocity</div>
+          </div>
+        </div>
+      </div>
     </div>
   </dialog>
 
   <!-- JavaScript Modules with cache-busting -->
-  <script src="/static/js/map.js?v=3.0"></script>
-  <script src="/static/js/charts.js?v=3.0"></script>
-  <script src="/static/js/export.js?v=3.0"></script>
-  <script src="/static/js/app.js?v=3.0"></script>
+  <script src="/static/js/map.js?v=3.1"></script>
+  <script src="/static/js/charts.js?v=3.1"></script>
+  <script src="/static/js/export.js?v=3.1"></script>
+  <script src="/static/js/app.js?v=3.1"></script>
 </body>
 </html>

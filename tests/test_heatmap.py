@@ -18,6 +18,11 @@ def test_get_exposure_heatmap_points_database():
     assert "time_range" in data
     assert "radius_nm" in data
     assert "center" in data
+    assert "units" in data
+    assert "uncertainty" in data
+    assert data["units"]["surface_deposition"] == "µg/m²"
+    assert data["uncertainty"]["total_margin_pct"] == 28.0
+    assert data["uncertainty"]["confidence_interval"] == "95%"
     assert data["radius_nm"] == 15.0
     assert data["time_range"] == "all"
     assert isinstance(data["points"], list)
@@ -40,6 +45,10 @@ def test_api_exposure_heatmap_endpoint(client):
     assert "center" in body
     assert "lat" in body["center"]
     assert "lon" in body["center"]
+    assert "units" in body
+    assert "uncertainty" in body
+    assert body["units"]["surface_deposition"] == "µg/m²"
+    assert body["uncertainty"]["total_margin_pct"] == 28.0
 
 def test_api_config_heatmap_radius(client):
     # Verify GET /api/config returns heatmap_radius_nm in thresholds

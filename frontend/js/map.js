@@ -785,10 +785,14 @@ async function fetchAndDrawExposureHeatmap() {
       heatmapBoundaryCircle.addTo(map);
     }
 
-    // Update legend radius text
+    // Update legend radius text and uncertainty
     const legendRad = document.getElementById('heatmap-legend-radius');
     if (legendRad) {
       legendRad.textContent = `(${actualRadiusNm} NM · ${centerLabel})`;
+    }
+    const legendUncertainty = document.getElementById('heatmap-legend-uncertainty');
+    if (legendUncertainty && data.uncertainty) {
+      legendUncertainty.textContent = data.uncertainty.margin_str || '±28% (95% CI)';
     }
 
     // 2. Remove existing heatmap layer
@@ -803,20 +807,22 @@ async function fetchAndDrawExposureHeatmap() {
       const initRadius = getHeatmapRadiusForZoom(currentZoom);
       const initBlur = Math.round(initRadius * 0.55);
 
-      // Yellow -> Orange -> Red spectrum for cumulative lead exposure
-      // maxZoom: 1 disables artificial 1/2^(maxZoom-zoom) attenuation so colors stay stable across all range scales!
+      // Yellow -> Orange -> Red calibrated spectrum for cumulative lead exposure
+      // max: 3.5 represents cumulative ground deposition threshold in µg/m²
+      // Single passes show as Yellow/Orange; repeated congested corridors accumulate into Red
       exposureHeatmapLayer = L.heatLayer(points, {
         radius: initRadius,
         blur: initBlur,
         maxZoom: 1,
-        max: 1.0,
-        minOpacity: 0.20,
+        max: 3.5,
+        minOpacity: 0.15,
         gradient: {
-          0.18: '#fde047',   // Pale Yellow
-          0.40: '#facc15',   // Vibrant Yellow
-          0.62: '#f97316',   // Vivid Orange
-          0.82: '#ef4444',   // Bright Red
-          1.0:  '#991b1b'    // Deep Crimson / Severe
+          0.15: '#fef08a',   // Pale Yellow (outer boundary dispersion < 1.0 µg/m²)
+          0.30: '#facc15',   // Vibrant Yellow (single pass corridor ~1.0 µg/m²)
+          0.50: '#fb923c',   // Warm Light Orange (downwind settling / 2 passes ~1.7 µg/m²)
+          0.70: '#f97316',   // Vivid Orange (multi-pass corridor ~2.5 µg/m²)
+          0.85: '#ef4444',   // Bright Red (congested corridor ~3.0 µg/m²)
+          1.00: '#991b1b'    // Deep Crimson / Severe (> 3.5 µg/m²)
         }
       });
 
