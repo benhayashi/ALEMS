@@ -132,6 +132,62 @@ class GeocodingService:
 
         return None
 
+    def reverse_geocode(self, lat: float, lon: float) -> Optional[Dict[str, Any]]:
+        """Reverse geocode latitude and longitude to a human-readable street address.
+        Uses ArcGIS World Geocode Server and OpenStreetMap Nominatim. Zero API key required.
+        """
+        # Tier 1: ArcGIS World Geocoding Service (Fast, clean US street addresses)
+        try:
+            url = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode"
+            params = {
+                "location": f"{lon},{lat}",
+                "f": "json",
+                "distance": 300
+            }
+            resp = self.session.get(url, params=params, timeout=4.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                addr_obj = data.get("address", {})
+                match_addr = addr_obj.get("Match_addr") or addr_obj.get("Address")
+                if match_addr:
+                    return {
+                        "address": match_addr,
+                        "lat": round(lat, 6),
+                        "lon": round(lon, 6),
+                        "source": "ArcGIS World Geocoder"
+                    }
+        except Exception as e:
+            print(f"ArcGIS reverse geocode failed: {e}")
+
+        # Tier 2: OpenStreetMap Nominatim reverse
+        try:
+            url = "https://nominatim.openstreetmap.org/reverse"
+            params = {
+                "lat": str(lat),
+                "lon": str(lon),
+                "format": "json"
+            }
+            resp = self.session.get(url, params=params, timeout=4.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                display_name = data.get("display_name")
+                if display_name:
+                    return {
+                        "address": display_name,
+                        "lat": round(lat, 6),
+                        "lon": round(lon, 6),
+                        "source": "OpenStreetMap Nominatim"
+                    }
+        except Exception as e:
+            print(f"Nominatim reverse geocode failed: {e}")
+
+        return {
+            "address": f"Lat {round(lat, 5)}, Lon {round(lon, 5)}",
+            "lat": round(lat, 6),
+            "lon": round(lon, 6),
+            "source": "Coordinates"
+        }
+
     def lookup_airport(self, code: str) -> Optional[Dict[str, Any]]:
         """Lookup airport coordinates, elevation, and runway geometry by ICAO/FAA code.
         Zero API key required.

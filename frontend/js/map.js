@@ -204,14 +204,25 @@ function drawHomeMarker(homeConfig) {
   });
 }
 
-function setHomeLocation(lat, lon, panMap = false) {
+async function setHomeLocation(lat, lon, panMap = false, newAddress = null) {
   const roundedLat = parseFloat(lat.toFixed(6));
   const roundedLon = parseFloat(lon.toFixed(6));
 
   const latInput = document.getElementById('setting-home-lat');
   const lonInput = document.getElementById('setting-home-lon');
+  const addrInput = document.getElementById('setting-home-address');
+  const headerAddrEl = document.getElementById('header-address');
+
   if (latInput) latInput.value = roundedLat;
   if (lonInput) lonInput.value = roundedLon;
+
+  // Immediately clear old address from header and input to prevent stale display
+  if (newAddress) {
+    if (addrInput) addrInput.value = newAddress;
+    if (headerAddrEl) headerAddrEl.textContent = `📍 ${newAddress.split(',')[0]}`;
+  } else {
+    if (headerAddrEl) headerAddrEl.textContent = `📍 Resolving Address...`;
+  }
 
   if (homeMarker) {
     homeMarker.setLatLng([roundedLat, roundedLon]);
@@ -227,24 +238,54 @@ function setHomeLocation(lat, lon, panMap = false) {
     }
   }
 
-  // Auto-save via API so the user doesn't even need to click save
-  fetch('/api/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      home_lat: roundedLat,
-      home_lon: roundedLon
-    })
-  }).then(r => r.json()).then(res => {
-    if (res.config && typeof applyConfigToUI === 'function') {
-      applyConfigToUI(res.config);
+  // Resolve address: use provided newAddress or reverse geocode coordinates
+  let resolvedAddress = newAddress;
+  if (!resolvedAddress) {
+    try {
+      const revRes = await fetch(`/api/geocode/reverse?lat=${roundedLat}&lon=${roundedLon}`);
+      if (revRes.ok) {
+        const revData = await revRes.json();
+        if (revData && revData.address) {
+          resolvedAddress = revData.address;
+        }
+      }
+    } catch (e) {
+      console.warn("Reverse geocoding failed:", e);
+    }
+  }
+
+  if (!resolvedAddress) {
+    resolvedAddress = `Lat ${roundedLat.toFixed(4)}, Lon ${roundedLon.toFixed(4)}`;
+  }
+
+  // Update input and header with resolved address
+  if (addrInput) addrInput.value = resolvedAddress;
+  if (headerAddrEl) {
+    headerAddrEl.textContent = `📍 ${resolvedAddress.split(',')[0]}`;
+    headerAddrEl.title = resolvedAddress;
+  }
+
+  // Auto-save both address and coordinates via API
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        home_address: resolvedAddress,
+        home_lat: roundedLat,
+        home_lon: roundedLon
+      })
+    });
+    const data = await res.json();
+    if (data.config && typeof applyConfigToUI === 'function') {
+      applyConfigToUI(data.config);
     }
     if (typeof showToast === 'function') {
-      showToast(`📍 Property location set to: ${roundedLat}, ${roundedLon}`);
+      showToast(`📍 Property location updated: ${resolvedAddress.split(',')[0]}`);
     }
-  }).catch(err => {
+  } catch (err) {
     console.error("Failed to auto-save location:", err);
-  });
+  }
 }
 
 function togglePinDropMode(enable) {

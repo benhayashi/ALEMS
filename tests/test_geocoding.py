@@ -14,3 +14,12 @@ def test_lookup_airport():
     assert apt is not None
     assert apt["id"] == "2W6"
     assert "runway_heading_1" in apt
+
+def test_reverse_geocode():
+    res = geocoding_service.reverse_geocode(38.2962, -76.5583)
+    assert res is not None
+    assert "address" in res
+    assert "lat" in res
+    assert "lon" in res
+    assert len(res["address"]) > 0
+

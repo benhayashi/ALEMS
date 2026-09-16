@@ -788,9 +788,11 @@ function setupSettingsHandlers() {
           document.getElementById('setting-home-lon').value = data.lon;
           if (data.address) {
             document.getElementById('setting-home-address').value = data.address;
+            const headerAddr = document.getElementById('header-address');
+            if (headerAddr) headerAddr.textContent = `📍 ${data.address.split(',')[0]}`;
           }
           if (typeof setHomeLocation === 'function') {
-            setHomeLocation(data.lat, data.lon, true);
+            setHomeLocation(data.lat, data.lon, true, data.address || undefined);
           }
           if (geocodeMsg) {
             geocodeMsg.style.display = 'block';

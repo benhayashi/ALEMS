@@ -236,6 +236,13 @@ def geocode_address(query: str = Query(...)):
         return JSONResponse({"error": f"Address not found: '{query}'"}, status_code=404)
     return res
 
+@app.get("/api/geocode/reverse")
+def reverse_geocode(lat: float = Query(...), lon: float = Query(...)):
+    res = geocoding_service.reverse_geocode(lat, lon)
+    if not res:
+        return {"address": f"Lat {round(lat, 5)}, Lon {round(lon, 5)}", "lat": lat, "lon": lon, "source": "Coordinates"}
+    return res
+
 @app.get("/api/airport/lookup")
 def lookup_airport(code: str = Query(...)):
     res = geocoding_service.lookup_airport(code)
