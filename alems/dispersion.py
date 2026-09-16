@@ -3,7 +3,7 @@ Calculates emission rates, wind alignment, downwind transport, and exposure risk
 """
 
 import math
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 from alems.config import config
 from alems.geodesy import distance_ft, haversine_distance_m, initial_bearing
 
