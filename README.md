@@ -43,8 +43,8 @@ ALEMS is fully containerized and can run standalone on any server, desktop, or R
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/alems.git
-cd alems
+git clone https://github.com/benhayashi/ALEMS.git
+cd ALEMS
 
 # 2. Start ALEMS container via Docker Compose
 docker compose up -d --build
@@ -64,8 +64,8 @@ All configuration settings, the SQLite database (`data/alems.db`), and generated
 
 ### 2. Setup
 ```bash
-git clone https://github.com/your-username/alems.git
-cd alems
+git clone https://github.com/benhayashi/ALEMS.git
+cd ALEMS
 
 python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt

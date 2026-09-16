@@ -37,3 +37,38 @@ def test_turbine_classification():
 def test_hex_to_n_number():
     # A00001 is N1
     assert classifier.hex_to_n_number("A00001") == "N1"
+
+def test_high_altitude_invariants():
+    # Aircraft cruising at 35,000 ft with no type tag
+    res_high = classifier.classify({"hex": "A364E7", "alt_baro": 35000, "gs": 450})
+    assert res_high["is_leaded"] is False
+    assert res_high["fuel_type"] == "Jet-A"
+    assert "High-Altitude" in res_high["engine_type"] or "Jet" in res_high["engine_type"]
+    assert res_high["lead_content_g_per_gal"] == 0.0
+
+def test_high_speed_override():
+    # Aircraft cruising at 320 kts at 8,000 ft with no type tag
+    res_fast = classifier.classify({"hex": "A88888", "alt_baro": 8000, "gs": 320})
+    assert res_fast["is_leaded"] is False
+    assert res_fast["fuel_type"] == "Jet-A"
+
+def test_airline_callsign_heuristic():
+    # Commercial airline callsign (AAL, DAL, SWA, etc.)
+    res_airline = classifier.classify({"flight": "AAL1234", "alt_baro": 8000, "gs": 220})
+    assert res_airline["is_leaded"] is False
+    assert res_airline["fuel_type"] == "Jet-A"
+
+def test_hex_registry_lookup():
+    # Mode-S hex AB184D -> N814AW, Airbus A319
+    res_reg = classifier.classify({"hex": "AB184D", "alt_baro": 10000, "gs": 230})
+    assert res_reg["tail_number"] == "N814AW"
+    assert res_reg["icao_type"] == "A319"
+    assert res_reg["is_leaded"] is False
+    assert res_reg["fuel_type"] == "Jet-A"
+
+def test_unlisted_low_slow_ga_fallback():
+    # Unlisted civilian aircraft flying low and slow (1,500 ft, 90 kts)
+    res_ga = classifier.classify({"hex": "A99999", "alt_baro": 1500, "gs": 90})
+    assert res_ga["is_leaded"] is True
+    assert res_ga["fuel_type"] == "100LL"
+    assert res_ga["engine_type"] == "Piston"

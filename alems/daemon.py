@@ -235,7 +235,8 @@ class MonitoringDaemon:
                         wind_dir_deg=wind_dir
                     )
 
-                    in_geofence = dist_nm_val <= config.ACTIVE_MONITOR_RADIUS_NM
+                    slant_range_nm = slant_range / 6076.12
+                    in_geofence = (dist_nm_val <= config.ACTIVE_MONITOR_RADIUS_NM) and (alt_msl <= 18000.0)
 
                     augmented = dict(ac)
                     augmented.update({
@@ -262,7 +263,7 @@ class MonitoringDaemon:
                             self.active_tracks[hex_code] = ActiveTrack(hex_code, augmented, meta)
 
                         track = self.active_tracks[hex_code]
-                        if dist_nm_val <= config.FLYOVER_EVENT_RADIUS_NM:
+                        if slant_range_nm <= config.FLYOVER_EVENT_RADIUS_NM and alt_msl <= 18000.0:
                             track.has_triggered_event = True
 
                         exposure_pt = {

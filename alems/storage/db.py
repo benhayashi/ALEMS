@@ -104,12 +104,55 @@ class Database:
                 raw_json TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS aircraft_registry (
+                hex TEXT PRIMARY KEY,
+                reg TEXT,
+                icao_type TEXT
+            );
+
             CREATE INDEX IF NOT EXISTS idx_events_start ON flyover_events(start_time_utc);
             CREATE INDEX IF NOT EXISTS idx_events_hex ON flyover_events(icao_hex);
             CREATE INDEX IF NOT EXISTS idx_events_leaded ON flyover_events(is_leaded);
             CREATE INDEX IF NOT EXISTS idx_events_downwind ON flyover_events(is_downwind);
             CREATE INDEX IF NOT EXISTS idx_points_event ON track_points(event_id);
             """)
+            self._populate_aircraft_registry_if_empty(conn)
+
+    def _populate_aircraft_registry_if_empty(self, conn: sqlite3.Connection) -> None:
+        """Seed aircraft_registry from readsb_aircrafts.json if database table is empty."""
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM aircraft_registry")
+            if cursor.fetchone()[0] == 0:
+                json_path = self.db_path.parent / "readsb_aircrafts.json"
+                if json_path.exists():
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    batch = [
+                        (h, val[0] if len(val) > 0 else None, val[1] if len(val) > 1 else None)
+                        for h, val in data.items()
+                    ]
+                    conn.executemany("INSERT OR IGNORE INTO aircraft_registry (hex, reg, icao_type) VALUES (?, ?, ?)", batch)
+                    conn.commit()
+        except Exception as e:
+            print(f"Warning: Failed to populate aircraft_registry: {e}")
+
+    def lookup_aircraft_hex(self, hex_code: str) -> Optional[Dict[str, str]]:
+        """Lookup registration and ICAO type from local 440k+ aircraft registry."""
+        if not hex_code:
+            return None
+        hex_clean = hex_code.strip()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT reg, icao_type FROM aircraft_registry WHERE hex IN (?, ?) LIMIT 1",
+                (hex_clean.lower(), hex_clean.upper())
+            )
+            row = cursor.fetchone()
+            if row:
+                return {"reg": row[0], "icao_type": row[1]}
+        return None
+
 
     @staticmethod
     def calculate_record_hash(record: Dict[str, Any], points: List[Dict[str, Any]]) -> str:
