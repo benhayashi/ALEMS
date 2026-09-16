@@ -58,6 +58,11 @@ def serve_index():
         return response
     return JSONResponse({"status": "Frontend not yet initialized. Visit /api/status"})
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    svg_icon = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#0f172a"/><text x="16" y="22" font-size="18" font-family="system-ui,sans-serif" font-weight="bold" fill="#38bdf8" text-anchor="middle">Pb</text></svg>"""
+    return Response(content=svg_icon, media_type="image/svg+xml")
+
 from alems.geocoding import geocoding_service
 
 @app.get("/api/config")
