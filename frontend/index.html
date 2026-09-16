@@ -91,11 +91,18 @@
           <button class="btn btn-secondary btn-sm btn-pin-drop" onclick="togglePinDropMode()" title="Drop Pin to set property location">
             📍 Set Pin
           </button>
+          <button class="btn btn-secondary btn-sm btn-plumes-active" id="btn-toggle-plumes" onclick="togglePlumeCones()" title="Toggle 100LL Directional Exhaust Plume Cones">
+            🔻 Plumes (ON)
+          </button>
           <button class="btn btn-secondary btn-sm" id="btn-toggle-heatmap" onclick="toggleExposureHeatmap()" title="Toggle 100LL Lead Exposure Heatmap (Yellow to Red)">
             🔥 100LL Heatmap
           </button>
-          <!-- Heatmap Timeframe Selector (visible when heatmap is active) -->
-          <div id="heatmap-timeframe-controls" class="heatmap-timeframe-group" style="display: none;">
+          <!-- Heatmap Timeframe & Center Controls (visible when heatmap is active) -->
+          <div id="heatmap-timeframe-controls" class="heatmap-timeframe-group" style="display: none; align-items: center; gap: 0.25rem;">
+            <select id="heatmap-center-select" class="form-input" style="padding: 1px 5px; font-size: 0.72rem; height: 26px; border-radius: 4px; background: rgba(15,23,42,0.85); color: #38bdf8; border: 1px solid var(--border-color); cursor: pointer;" onchange="setHeatmapCenter(this.value)">
+              <option value="airport">Airfield Center</option>
+              <option value="property">Property Center</option>
+            </select>
             <button class="btn btn-sm timeframe-btn active" data-timeframe="24h" onclick="setHeatmapTimeframe('24h')">24h</button>
             <button class="btn btn-sm timeframe-btn" data-timeframe="7d" onclick="setHeatmapTimeframe('7d')">7d</button>
             <button class="btn btn-sm timeframe-btn" data-timeframe="30d" onclick="setHeatmapTimeframe('30d')">30d</button>

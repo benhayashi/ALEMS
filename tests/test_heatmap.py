@@ -56,3 +56,20 @@ def test_api_config_heatmap_radius(client):
 
     # Reset back to 10.0
     client.post("/api/config", json={"heatmap_radius_nm": 10.0})
+
+def test_api_exposure_heatmap_center_selection(client):
+    # Test property center
+    res_prop = client.get("/api/exposure/heatmap?center_type=property&radius_nm=8.0")
+    assert res_prop.status_code == 200
+    data_prop = res_prop.json()
+    assert data_prop["center_type"] == "property"
+    assert round(data_prop["center"]["lat"], 2) == round(config.HOME_LAT, 2)
+    assert round(data_prop["center"]["lon"], 2) == round(config.HOME_LON, 2)
+
+    # Test custom center coords
+    res_custom = client.get("/api/exposure/heatmap?center_lat=38.35&center_lon=-76.50&radius_nm=5.0")
+    assert res_custom.status_code == 200
+    data_custom = res_custom.json()
+    assert round(data_custom["center"]["lat"], 2) == 38.35
+    assert round(data_custom["center"]["lon"], 2) == -76.50
+

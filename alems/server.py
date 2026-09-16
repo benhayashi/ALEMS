@@ -406,15 +406,31 @@ def get_statistics(time_range: str = Query("all")):
 @app.get("/api/exposure/heatmap")
 def get_exposure_heatmap(
     time_range: str = Query("24h"),
-    radius_nm: Optional[float] = Query(None)
+    radius_nm: Optional[float] = Query(None),
+    center_type: str = Query("airport"),
+    center_lat: Optional[float] = Query(None),
+    center_lon: Optional[float] = Query(None)
 ):
     """Return aggregated 100LL exposure coordinates and weights for regional heatmap."""
-    return db.get_exposure_heatmap_points(
+    if center_lat is not None and center_lon is not None:
+        try:
+            c_lat = float(center_lat)
+            c_lon = float(center_lon)
+        except (ValueError, TypeError):
+            c_lat, c_lon = config.AIRPORT_LAT, config.AIRPORT_LON
+    elif str(center_type).lower() == "property":
+        c_lat, c_lon = config.HOME_LAT, config.HOME_LON
+    else:
+        c_lat, c_lon = config.AIRPORT_LAT, config.AIRPORT_LON
+
+    res = db.get_exposure_heatmap_points(
         time_range=time_range,
-        center_lat=config.AIRPORT_LAT,
-        center_lon=config.AIRPORT_LON,
+        center_lat=c_lat,
+        center_lon=c_lon,
         radius_nm=radius_nm
     )
+    res["center_type"] = center_type
+    return res
 
 @app.get("/api/export/csv")
 def download_events_csv(leaded_only: bool = Query(False)):

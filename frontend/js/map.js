@@ -21,12 +21,17 @@ let extendedCenterline = null;
 let proximityCircles = [];
 let isPinDropMode = false;
 
+// 100LL Plume Cones state
+let showPlumeCones = localStorage.getItem('alems_show_plumes') !== 'false'; // default true
+let plumeConesGroup = L.layerGroup();
+
 // 100LL Exposure Heatmap state
 let exposureHeatmapLayer = null;
 let heatmapBoundaryCircle = null;
 let exposureHeatmapGroup = L.layerGroup();
 let isHeatmapActive = false;
 let currentHeatmapTimeframe = '24h';
+let currentHeatmapCenterType = 'airport'; // 'airport' or 'property'
 let cachedAirportConfig = null;
 let cachedHomeConfig = null;
 
@@ -93,21 +98,34 @@ function initMap(homeConfig, airportConfig) {
   };
 
   const overlayLayers = {
+    "🔻 100LL Plume Cones": plumeConesGroup,
     "🔥 100LL Exposure Heatmap": exposureHeatmapGroup
   };
 
   layerControl = L.control.layers(baseLayers, overlayLayers, { position: 'topright' }).addTo(map);
 
+  if (showPlumeCones) {
+    plumeConesGroup.addTo(map);
+  }
+  updatePlumeToggleButton();
+
   map.on('overlayadd', (e) => {
     if (e.name && e.name.includes("Heatmap")) {
       toggleExposureHeatmap(true);
+    } else if (e.name && e.name.includes("Plume")) {
+      togglePlumeCones(true);
     }
   });
   map.on('overlayremove', (e) => {
     if (e.name && e.name.includes("Heatmap")) {
       toggleExposureHeatmap(false);
+    } else if (e.name && e.name.includes("Plume")) {
+      togglePlumeCones(false);
     }
   });
+
+  // Dynamic zoom listener to maintain consistent physical ground footprint for heatmap
+  map.on('zoomend', onMapZoomChange);
 
   // Click / tap on map listener for Pin Drop Mode
   map.on('click', (e) => {
@@ -443,8 +461,8 @@ function updateAircraftMarkers(aircraftList, weather) {
       delete aircraftVectors[hex];
     }
 
-    // Atmospheric dispersion plume cone (restricted to active geofence vicinity)
-    updatePlumeCone(hex, lat, lon, effectiveWindDir, isLeaded, isDownwind, ac.in_geofence);
+    // Atmospheric dispersion plume cone
+    updatePlumeCone(hex, lat, lon, effectiveWindDir, isLeaded, isDownwind, ac.in_geofence, ac.aircraft_meta, ac.flight);
   });
 
   // Remove aircraft that left coverage
@@ -471,9 +489,9 @@ function updateAircraftMarkers(aircraftList, weather) {
   });
 }
 
-function updatePlumeCone(hex, acLat, acLon, windDirDeg, isLeaded, isDownwind, inGeofence) {
-  // Only render exhaust dispersion cones for leaded aircraft within the monitored geofence
-  if (!isLeaded || !inGeofence) {
+function updatePlumeCone(hex, acLat, acLon, windDirDeg, isLeaded, isDownwind, inGeofence, acMeta, flight) {
+  // If user disabled cones or aircraft is not leaded, remove layer
+  if (!showPlumeCones || !isLeaded) {
     if (plumePolygons[hex]) {
       map.removeLayer(plumePolygons[hex]);
       delete plumePolygons[hex];
@@ -481,9 +499,11 @@ function updatePlumeCone(hex, acLat, acLon, windDirDeg, isLeaded, isDownwind, in
     return;
   }
 
-  const plumeHeading = (windDirDeg + 180.0) % 360.0;
-  const coneLengthMeters = 1600.0;
-  const halfAngle = 22.0;
+  // Directional dissipation: plume drifts downwind (opposite of origin wind heading)
+  const safeWindDir = (windDirDeg !== undefined && windDirDeg !== null && !isNaN(windDirDeg)) ? Number(windDirDeg) : 210.0;
+  const plumeHeading = (safeWindDir + 180.0) % 360.0;
+  const coneLengthMeters = 2400.0;
+  const halfAngle = 24.0;
 
   const leftAngle = (plumeHeading - halfAngle + 360.0) % 360.0;
   const rightAngle = (plumeHeading + halfAngle) % 360.0;
@@ -496,21 +516,24 @@ function updatePlumeCone(hex, acLat, acLon, windDirDeg, isLeaded, isDownwind, in
   }
 
   const pLeft = getOffsetPoint(acLat, acLon, coneLengthMeters, leftAngle);
-  const pCenter = getOffsetPoint(acLat, acLon, coneLengthMeters * 1.08, plumeHeading);
+  const pCenter = getOffsetPoint(acLat, acLon, coneLengthMeters * 1.12, plumeHeading);
   const pRight = getOffsetPoint(acLat, acLon, coneLengthMeters, rightAngle);
 
   const polygonPoints = [[acLat, acLon], pLeft, pCenter, pRight];
   const plumeColor = isDownwind ? '#ef4444' : '#f59e0b';
-  const fillOpacity = isDownwind ? 0.22 : 0.10;
+  const fillOpacity = isDownwind ? 0.28 : 0.16;
+
+  const callsign = flight || (acMeta && acMeta.tail_number) || hex;
+  const tooltipText = `<strong>${callsign}</strong> 100LL Exhaust Plume Drift<br/>Dissipation Heading: ${Math.round(plumeHeading)}°<br/>Winds from: ${Math.round(safeWindDir)}°`;
 
   if (!plumePolygons[hex]) {
     plumePolygons[hex] = L.polygon(polygonPoints, {
       color: plumeColor,
-      weight: 1,
+      weight: 1.5,
       fillColor: plumeColor,
       fillOpacity: fillOpacity,
-      dashArray: '3, 3'
-    }).addTo(map);
+      dashArray: '4, 4'
+    }).bindTooltip(tooltipText, { sticky: true, direction: 'top' }).addTo(map);
   } else {
     plumePolygons[hex].setLatLngs(polygonPoints);
     plumePolygons[hex].setStyle({
@@ -518,6 +541,101 @@ function updatePlumeCone(hex, acLat, acLon, windDirDeg, isLeaded, isDownwind, in
       fillColor: plumeColor,
       fillOpacity: fillOpacity
     });
+    plumePolygons[hex].setTooltipContent(tooltipText);
+  }
+}
+
+/**
+ * Toggle 100LL Exhaust Plume Cones
+ * @param {boolean|undefined} forcedState
+ */
+function togglePlumeCones(forcedState) {
+  if (forcedState !== undefined) {
+    showPlumeCones = Boolean(forcedState);
+  } else {
+    showPlumeCones = !showPlumeCones;
+  }
+  localStorage.setItem('alems_show_plumes', showPlumeCones ? 'true' : 'false');
+  updatePlumeToggleButton();
+
+  if (!showPlumeCones) {
+    Object.keys(plumePolygons).forEach(hex => {
+      if (plumePolygons[hex] && map) {
+        map.removeLayer(plumePolygons[hex]);
+      }
+      delete plumePolygons[hex];
+    });
+    if (typeof showToast === 'function') {
+      showToast('100LL exhaust dissipation cones hidden');
+    }
+  } else {
+    if (typeof renderFilteredAircraft === 'function') {
+      renderFilteredAircraft();
+    }
+    if (typeof showToast === 'function') {
+      showToast('100LL directional exhaust dissipation cones enabled');
+    }
+  }
+}
+
+function updatePlumeToggleButton() {
+  const btn = document.getElementById('btn-toggle-plumes');
+  if (btn) {
+    if (showPlumeCones) {
+      btn.classList.add('btn-plumes-active');
+      btn.innerHTML = '🔻 Plumes (ON)';
+      btn.title = 'Click to hide 100LL exhaust dissipation cones';
+    } else {
+      btn.classList.remove('btn-plumes-active');
+      btn.innerHTML = '🔻 Plumes (OFF)';
+      btn.title = 'Click to show 100LL exhaust dissipation cones';
+    }
+  }
+}
+
+/**
+ * Dynamic zoom listener ensuring geographic consistency across all map range scales
+ */
+function onMapZoomChange() {
+  if (exposureHeatmapLayer && map && isHeatmapActive) {
+    const currentZoom = map.getZoom();
+    const r = getHeatmapRadiusForZoom(currentZoom);
+    const b = Math.round(r * 0.55);
+    exposureHeatmapLayer.setOptions({
+      radius: r,
+      blur: b
+    });
+  }
+}
+
+function getHeatmapRadiusForZoom(zoom) {
+  // Calibrated so physical ground footprint remains consistent as user zooms in/out
+  const zoomRadii = {
+    8: 8,
+    9: 10,
+    10: 14,
+    11: 18,
+    12: 24,
+    13: 32,
+    14: 46,
+    15: 64,
+    16: 88,
+    17: 120,
+    18: 160
+  };
+  return zoomRadii[zoom] || (zoom < 8 ? 6 : Math.round(24 * Math.pow(1.35, zoom - 12)));
+}
+
+/**
+ * Switch Heatmap center location: Airfield vs Property
+ * @param {string} centerType
+ */
+function setHeatmapCenter(centerType) {
+  currentHeatmapCenterType = centerType;
+  const sel = document.getElementById('heatmap-center-select');
+  if (sel) sel.value = centerType;
+  if (isHeatmapActive) {
+    fetchAndDrawExposureHeatmap();
   }
 }
 
@@ -581,22 +699,35 @@ async function fetchAndDrawExposureHeatmap() {
   if (!map || !isHeatmapActive) return;
 
   const radiusNm = (window.appConfig && window.appConfig.thresholds && window.appConfig.thresholds.heatmap_radius_nm) || 10.0;
+  const propLat = (cachedHomeConfig && cachedHomeConfig.lat) || (window.appConfig && window.appConfig.property && window.appConfig.property.lat) || 38.30000;
+  const propLon = (cachedHomeConfig && cachedHomeConfig.lon) || (window.appConfig && window.appConfig.property && window.appConfig.property.lon) || -76.60000;
   const aptLat = (cachedAirportConfig && cachedAirportConfig.lat) || (window.appConfig && window.appConfig.airport && window.appConfig.airport.lat) || 38.315355;
   const aptLon = (cachedAirportConfig && cachedAirportConfig.lon) || (window.appConfig && window.appConfig.airport && window.appConfig.airport.lon) || -76.550116;
 
+  let centerLat, centerLon, centerLabel;
+  if (currentHeatmapCenterType === 'property') {
+    centerLat = propLat;
+    centerLon = propLon;
+    centerLabel = 'Property Pinpoint';
+  } else {
+    centerLat = aptLat;
+    centerLon = aptLon;
+    centerLabel = (cachedAirportConfig && cachedAirportConfig.id) ? `${cachedAirportConfig.id} Airfield` : 'Airfield (2W6)';
+  }
+
   try {
-    const res = await fetch(`/api/exposure/heatmap?time_range=${currentHeatmapTimeframe}&radius_nm=${radiusNm}`);
+    const res = await fetch(`/api/exposure/heatmap?time_range=${currentHeatmapTimeframe}&radius_nm=${radiusNm}&center_type=${currentHeatmapCenterType}&center_lat=${centerLat}&center_lon=${centerLon}`);
     if (!res.ok) throw new Error("Failed to fetch exposure heatmap points");
     const data = await res.json();
 
     const actualRadiusNm = data.radius_nm || radiusNm;
     const radiusMeters = actualRadiusNm * NM_TO_METERS;
 
-    // 1. Draw or update airfield radial boundary circle
+    // 1. Draw or update radial boundary circle around selected center
     if (heatmapBoundaryCircle && map) {
       map.removeLayer(heatmapBoundaryCircle);
     }
-    heatmapBoundaryCircle = L.circle([aptLat, aptLon], {
+    heatmapBoundaryCircle = L.circle([centerLat, centerLon], {
       radius: radiusMeters,
       color: '#f97316',
       weight: 1.5,
@@ -604,7 +735,7 @@ async function fetchAndDrawExposureHeatmap() {
       fillColor: '#f97316',
       fillOpacity: 0.04,
       interactive: true
-    }).bindTooltip(`${actualRadiusNm} NM Airfield 100LL Exposure Range`, {
+    }).bindTooltip(`${actualRadiusNm} NM Radial Exposure Range around ${centerLabel}`, {
       permanent: false,
       direction: 'top'
     });
@@ -616,7 +747,7 @@ async function fetchAndDrawExposureHeatmap() {
     // Update legend radius text
     const legendRad = document.getElementById('heatmap-legend-radius');
     if (legendRad) {
-      legendRad.textContent = `(${actualRadiusNm} NM)`;
+      legendRad.textContent = `(${actualRadiusNm} NM · ${centerLabel})`;
     }
 
     // 2. Remove existing heatmap layer
@@ -627,19 +758,24 @@ async function fetchAndDrawExposureHeatmap() {
 
     const points = data.points || [];
     if (points.length > 0 && typeof L.heatLayer === 'function') {
+      const currentZoom = map.getZoom();
+      const initRadius = getHeatmapRadiusForZoom(currentZoom);
+      const initBlur = Math.round(initRadius * 0.55);
+
       // Yellow -> Orange -> Red spectrum for cumulative lead exposure
+      // maxZoom: 1 disables artificial 1/2^(maxZoom-zoom) attenuation so colors stay stable across all range scales!
       exposureHeatmapLayer = L.heatLayer(points, {
-        radius: 26,
-        blur: 16,
-        maxZoom: 16,
+        radius: initRadius,
+        blur: initBlur,
+        maxZoom: 1,
         max: 1.0,
-        minOpacity: 0.22,
+        minOpacity: 0.20,
         gradient: {
-          0.2: '#fde047',   // Pale Yellow
-          0.45: '#facc15',  // Vibrant Yellow
-          0.68: '#f97316',  // Vivid Orange
-          0.88: '#ef4444',  // Bright Red
-          1.0: '#991b1b'    // Deep Crimson / Severe
+          0.18: '#fde047',   // Pale Yellow
+          0.40: '#facc15',   // Vibrant Yellow
+          0.62: '#f97316',   // Vivid Orange
+          0.82: '#ef4444',   // Bright Red
+          1.0:  '#991b1b'    // Deep Crimson / Severe
         }
       });
 
@@ -655,3 +791,7 @@ async function fetchAndDrawExposureHeatmap() {
     console.error("Error drawing 100LL heatmap:", err);
   }
 }
+
+window.togglePlumeCones = togglePlumeCones;
+window.setHeatmapCenter = setHeatmapCenter;
+

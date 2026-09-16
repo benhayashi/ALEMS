@@ -813,6 +813,13 @@ tr:hover {
   box-shadow: 0 0 12px rgba(249, 115, 22, 0.6);
 }
 
+.btn-plumes-active {
+  background: #d97706 !important;
+  color: #fff !important;
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+}
+
 .heatmap-legend {
   position: absolute;
   bottom: 24px;
