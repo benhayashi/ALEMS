@@ -554,10 +554,10 @@ function renderEventsTable(events) {
     const isLeaded = ev.is_leaded === 1;
     const isDownwind = ev.is_downwind === 1;
 
-    let scoreColor = '#6ee7b7';
+    let scoreColor = '#10b981';
     if (ev.max_exposure_score >= 70) scoreColor = '#ef4444';
-    else if (ev.max_exposure_score >= 40) scoreColor = '#f59e0b';
-    else if (ev.max_exposure_score >= 15) scoreColor = '#38bdf8';
+    else if (ev.max_exposure_score >= 40) scoreColor = '#f97316';
+    else if (ev.max_exposure_score > 0) scoreColor = '#facc15';
 
     return `
       <tr>

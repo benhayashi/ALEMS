@@ -236,8 +236,8 @@
 
         <div class="stat-card">
           <div class="stat-title">100LL Piston Passes</div>
-          <div class="stat-value" id="stat-leaded-flyovers" style="color: #fca5a5;">0</div>
-          <div class="stat-desc">Emitting leaded avgas</div>
+          <div class="stat-value" id="stat-leaded-flyovers" style="color: #10b981;">0</div>
+          <div class="stat-desc" id="stat-leaded-flyovers-desc">Zero leaded passes (Clean)</div>
         </div>
 
         <div class="stat-card">
@@ -252,10 +252,55 @@
           <div class="stat-desc">3D distance to property</div>
         </div>
 
-        <div class="stat-card">
-          <div class="stat-title">Peak Exposure Score</div>
-          <div class="stat-value" id="stat-peak-risk" style="color: #ef4444;">0 / 100</div>
-          <div class="stat-desc">Calculated dispersion index</div>
+        <div class="stat-card" style="position: relative;">
+          <div class="stat-title" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Peak Exposure Score</span>
+            <button type="button" class="info-circle-btn" onclick="openExposureInfoModal()" title="View how Peak Exposure Score is calculated" aria-label="Exposure Calculation Info">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            </button>
+          </div>
+          <div class="stat-value" id="stat-peak-risk" style="color: #10b981;">0 / 100</div>
+          <div class="stat-desc" id="stat-peak-risk-desc">Clean &bull; No lead detected</div>
+        </div>
+      </div>
+
+      <!-- Lead Exposure Severity Scale & Legend -->
+      <div class="risk-legend-container">
+        <div class="risk-legend-header">
+          <span class="risk-legend-title">Lead Exposure Risk Spectrum & Legend</span>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="openExposureInfoModal()" style="font-size: 0.72rem; padding: 0.2rem 0.5rem;">
+            <span>How It's Calculated ⓘ</span>
+          </button>
+        </div>
+        <div class="risk-legend-grid">
+          <div class="risk-legend-item">
+            <span class="risk-dot" style="background: #10b981; box-shadow: 0 0 6px #10b981;"></span>
+            <div>
+              <div class="risk-item-label" style="color: #6ee7b7;">0 &bull; Clean / Unleaded</div>
+              <div class="risk-item-sub">Jet-A turbine, turboprop, electric, or zero flights. Zero airborne lead.</div>
+            </div>
+          </div>
+          <div class="risk-legend-item">
+            <span class="risk-dot" style="background: #facc15; box-shadow: 0 0 6px #facc15;"></span>
+            <div>
+              <div class="risk-item-label" style="color: #fde047;">1 – 39 &bull; Low / Moderate</div>
+              <div class="risk-item-sub">100LL pass at higher altitude (>1,500 ft AGL) or upwind; minimal ground deposition.</div>
+            </div>
+          </div>
+          <div class="risk-legend-item">
+            <span class="risk-dot" style="background: #f97316; box-shadow: 0 0 6px #f97316;"></span>
+            <div>
+              <div class="risk-item-label" style="color: #fdba74;">40 – 69 &bull; Elevated</div>
+              <div class="risk-item-sub">Direct downwind plume or close pass (<1,500 ft); detectable short-term aerosol.</div>
+            </div>
+          </div>
+          <div class="risk-legend-item">
+            <span class="risk-dot" style="background: #ef4444; box-shadow: 0 0 6px #ef4444;"></span>
+            <div>
+              <div class="risk-item-label" style="color: #fca5a5;">70 – 100 &bull; Critical</div>
+              <div class="risk-item-sub">Direct low-altitude climb/departure into downwind plume; peak ground exposure.</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -604,10 +649,93 @@
     </div>
   </main>
 
+  <!-- Peak Exposure Score Educational & Mathematical Breakdown Modal -->
+  <dialog id="exposure-info-dialog" class="alems-modal">
+    <div class="alems-modal-header">
+      <div class="alems-modal-title">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        Peak Lead Exposure Score (0 – 100)
+      </div>
+      <button type="button" class="alems-modal-close" onclick="closeExposureInfoModal()" aria-label="Close dialog">&times;</button>
+    </div>
+    <div class="alems-modal-body">
+      <p style="margin-top: 0; color: #cbd5e1;">
+        The <strong>Peak Exposure Score</strong> is a real-time, physics-based index (calibrated from <strong>0 to 100</strong>) that quantifies aerosolized tetraethyllead exposure risk at your monitored property for each aircraft flyover.
+      </p>
+
+      <h4 style="color: #38bdf8; margin: 1rem 0 0.4rem 0; font-size: 0.9rem;">1. Exposure Risk Spectrum</h4>
+      <table class="risk-breakdown-table">
+        <thead>
+          <tr>
+            <th style="width: 25%;">Score Range</th>
+            <th style="width: 25%;">Severity Level</th>
+            <th>Aviation &amp; Dispersion Context</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong style="color: #10b981;">0 / 100</strong></td>
+            <td><span class="badge" style="background: rgba(16,185,129,0.2); color: #6ee7b7; border-color: rgba(16,185,129,0.4);">Clean / None</span></td>
+            <td>Unleaded turbine, turboprop (Jet-A), commercial airline, electric, or zero flights. Zero airborne lead.</td>
+          </tr>
+          <tr>
+            <td><strong style="color: #facc15;">1 – 39 / 100</strong></td>
+            <td><span class="badge" style="background: rgba(250,204,21,0.2); color: #fde047; border-color: rgba(250,204,21,0.4);">Low / Moderate</span></td>
+            <td>100LL piston aircraft passing at higher cruise altitudes (&gt;1,500 ft AGL) or upwind. Plume drifts away from property; minimal ground deposition.</td>
+          </tr>
+          <tr>
+            <td><strong style="color: #f97316;">40 – 69 / 100</strong></td>
+            <td><span class="badge" style="background: rgba(249,115,22,0.2); color: #fdba74; border-color: rgba(249,115,22,0.4);">Elevated Downwind</span></td>
+            <td>100LL aircraft passing within 1.5 NM directly upwind, or within 1,200 ft slant range. Detectable ground-level plume concentration (0.5 – 2.0 &mu;g/m&sup3;).</td>
+          </tr>
+          <tr>
+            <td><strong style="color: #ef4444;">70 – 100 / 100</strong></td>
+            <td><span class="badge" style="background: rgba(239,68,68,0.2); color: #fca5a5; border-color: rgba(239,68,68,0.4);">Critical / Direct Plume</span></td>
+            <td>Direct low-altitude takeoff or climb-out (high engine power factor) passing directly overhead and upwind. Highest aerosolized lead concentration (2.0 – 5.0+ &mu;g/m&sup3;).</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4 style="color: #38bdf8; margin: 1.25rem 0 0.4rem 0; font-size: 0.9rem;">2. Mathematical &amp; Physical Formulation</h4>
+      <p style="color: #94a3b8; margin-bottom: 0.5rem;">
+        The score synthesizes two coupled atmospheric and aerodynamic phenomena:
+      </p>
+
+      <div class="formula-box">
+        Score = min(100, (C_ground &times; 25.0) + (Overhead_Factor &times; 40.0 &times; Wind_Alignment))
+      </div>
+
+      <ul style="padding-left: 1.25rem; color: #cbd5e1; margin-bottom: 1rem;">
+        <li style="margin-bottom: 0.4rem;">
+          <strong>Aerosolized Lead Emission Rate (Q):</strong> Reciprocating piston aircraft burning 100LL AvGas contain <strong>2.12 grams of lead per gallon</strong>. Real-time fuel burn rate is modulated by engine power setting:
+          full-throttle climb-out (100% power factor) vs. descent/approach (45% power factor).
+        </li>
+        <li style="margin-bottom: 0.4rem;">
+          <strong>Gaussian Plume Dispersion (C_ground):</strong> Uses standard Pasquill-Gifford atmospheric diffusion equations:
+          <div style="font-family: monospace; color: #93c5fd; padding: 0.4rem 0; font-size: 0.78rem;">
+            C(x, y, z) = [ Q / (&pi; &middot; u &middot; &sigma;_y &middot; &sigma;_z) ] &middot; exp(-y&sup2; / 2&sigma;_y&sup2;) &middot; exp(-H&sup2; / 2&sigma;_z&sup2;)
+          </div>
+          Where <em>u</em> is effective wind speed from your weather station, <em>y</em> is lateral crosswind displacement, <em>H</em> is flight altitude AGL, and &sigma;_y, &sigma;_z are atmospheric dispersion coefficients.
+        </li>
+        <li style="margin-bottom: 0.4rem;">
+          <strong>Wind Vector Alignment:</strong> Calculates whether the house falls inside the downwind lateral exhaust cone (&plusmn;35&deg; from wind transport axis).
+        </li>
+        <li style="margin-bottom: 0.4rem;">
+          <strong>Wingtip Vortex Downwash (Overhead_Factor):</strong> For close passes (&lt;1,500 ft slant range), aircraft wingtip vortices force engine exhaust downward into the immediate ground boundary layer regardless of regional wind direction.
+        </li>
+      </ul>
+
+      <h4 style="color: #38bdf8; margin: 1rem 0 0.4rem 0; font-size: 0.9rem;">3. EPA Regulatory &amp; Health Context</h4>
+      <p style="color: #cbd5e1; font-size: 0.8rem; margin-bottom: 0;">
+        Under the <strong>Clean Air Act</strong>, the EPA National Ambient Air Quality Standard (NAAQS) for lead is <strong>0.15 &mu;g/m&sup3;</strong> (3-month rolling average). While high-altitude aircraft disperse lead over wide areas, low-altitude general aviation flyovers produce localized ground-level bursts of <strong>0.5 to 5.0+ &mu;g/m&sup3;</strong>, which settle into soil and household dust. ALEMS logs every event with cryptographic SHA-256 hashes to provide verifiable, audit-ready corroboration for regulatory and community advocacy.
+      </p>
+    </div>
+  </dialog>
+
   <!-- JavaScript Modules with cache-busting -->
-  <script src="/static/js/map.js?v=2.8"></script>
-  <script src="/static/js/charts.js?v=2.8"></script>
-  <script src="/static/js/export.js?v=2.8"></script>
-  <script src="/static/js/app.js?v=2.8"></script>
+  <script src="/static/js/map.js?v=2.9"></script>
+  <script src="/static/js/charts.js?v=2.9"></script>
+  <script src="/static/js/export.js?v=2.9"></script>
+  <script src="/static/js/app.js?v=2.9"></script>
 </body>
 </html>

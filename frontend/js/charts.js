@@ -26,9 +26,22 @@ function initCharts() {
             {
               label: '100LL Piston Flyovers',
               data: [],
-              backgroundColor: 'rgba(239, 68, 68, 0.65)',
-              borderColor: '#ef4444',
+              backgroundColor: function(ctx) {
+                const val = ctx.raw || 0;
+                if (val <= 0) return 'rgba(16, 185, 129, 0.4)';
+                if (val <= 2) return 'rgba(250, 204, 21, 0.65)';
+                if (val <= 5) return 'rgba(249, 115, 22, 0.75)';
+                return 'rgba(239, 68, 68, 0.85)';
+              },
+              borderColor: function(ctx) {
+                const val = ctx.raw || 0;
+                if (val <= 0) return '#10b981';
+                if (val <= 2) return '#facc15';
+                if (val <= 5) return '#f97316';
+                return '#ef4444';
+              },
               borderWidth: 1,
+              borderRadius: 3,
               yAxisID: 'y'
             },
             {
@@ -36,9 +49,20 @@ function initCharts() {
               data: [],
               type: 'line',
               borderColor: '#f59e0b',
-              backgroundColor: 'rgba(245, 158, 11, 0.2)',
-              fill: false,
+              backgroundColor: 'rgba(245, 158, 11, 0.12)',
+              fill: true,
               tension: 0.3,
+              pointBackgroundColor: function(ctx) {
+                const score = ctx.raw || 0;
+                if (score <= 0) return '#10b981';
+                if (score < 40) return '#facc15';
+                if (score < 70) return '#f97316';
+                return '#ef4444';
+              },
+              pointBorderColor: '#0f172a',
+              pointBorderWidth: 1.5,
+              pointRadius: 4.5,
+              pointHoverRadius: 7,
               yAxisID: 'y1'
             }
           ]
@@ -52,9 +76,19 @@ function initCharts() {
               callbacks: {
                 label: function(context) {
                   if (context.datasetIndex === 0) {
-                    return ` ${context.parsed.y} leaded passes`;
+                    const v = context.parsed.y;
+                    let tier = 'Clean';
+                    if (v > 5) tier = 'High Frequency';
+                    else if (v > 2) tier = 'Moderate Frequency';
+                    else if (v > 0) tier = 'Low Frequency';
+                    return ` 100LL Passes: ${v} (${tier})`;
                   }
-                  return ` Peak Risk: ${context.parsed.y} / 100`;
+                  const score = context.parsed.y;
+                  let tier = 'Clean / None';
+                  if (score >= 70) tier = 'Critical / Direct Plume';
+                  else if (score >= 40) tier = 'Elevated Downwind';
+                  else if (score > 0) tier = 'Low / Moderate';
+                  return ` Peak Exposure: ${score} / 100 (${tier})`;
                 }
               }
             }
@@ -69,7 +103,7 @@ function initCharts() {
               position: 'left',
               grid: { color: '#334155' },
               ticks: { color: '#94a3b8', font: { size: 10 }, stepSize: 1 },
-              title: { display: true, text: '100LL Passes', color: '#94a3b8', font: { size: 10 } },
+              title: { display: true, text: '100LL Passes (Count)', color: '#94a3b8', font: { size: 10 } },
               beginAtZero: true
             },
             y1: {
@@ -77,7 +111,7 @@ function initCharts() {
               position: 'right',
               grid: { drawOnChartArea: false },
               ticks: { color: '#f59e0b', font: { size: 10 } },
-              title: { display: true, text: 'Lead Exposure (0-100)', color: '#f59e0b', font: { size: 10 } },
+              title: { display: true, text: 'Peak Exposure Index (0 – 100)', color: '#f59e0b', font: { size: 10 } },
               min: 0,
               max: 100
             }
@@ -170,14 +204,65 @@ function updateAnalyticsUI(stats) {
   const elMaxRisk = document.getElementById('stat-peak-risk');
 
   if (elTotal) elTotal.textContent = stats.total_events || 0;
-  if (elLeaded) elLeaded.textContent = stats.total_leaded_events || 0;
+
+  // 100LL Piston Passes: Dynamic green -> yellow -> orange -> red
+  if (elLeaded) {
+    const leadedCount = stats.total_leaded_events || 0;
+    elLeaded.textContent = leadedCount;
+    const elLeadedDesc = document.getElementById('stat-leaded-flyovers-desc');
+    const elLeadedCard = elLeaded.closest('.stat-card');
+
+    if (leadedCount === 0) {
+      elLeaded.style.color = '#10b981';
+      if (elLeadedDesc) elLeadedDesc.textContent = "Zero leaded passes (Clean)";
+      if (elLeadedCard) elLeadedCard.style.borderColor = 'rgba(16, 185, 129, 0.25)';
+    } else if (leadedCount <= 3) {
+      elLeaded.style.color = '#facc15';
+      if (elLeadedDesc) elLeadedDesc.textContent = "Low leaded frequency";
+      if (elLeadedCard) elLeadedCard.style.borderColor = 'rgba(250, 204, 21, 0.3)';
+    } else if (leadedCount <= 9) {
+      elLeaded.style.color = '#f97316';
+      if (elLeadedDesc) elLeadedDesc.textContent = "Moderate leaded frequency";
+      if (elLeadedCard) elLeadedCard.style.borderColor = 'rgba(249, 115, 22, 0.35)';
+    } else {
+      elLeaded.style.color = '#ef4444';
+      if (elLeadedDesc) elLeadedDesc.textContent = "High frequency 100LL passes";
+      if (elLeadedCard) elLeadedCard.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+    }
+  }
+
   if (elDownwind) elDownwind.textContent = stats.total_downwind_leaded || 0;
   if (elMinSlant) {
     elMinSlant.textContent = stats.min_slant_range_ft && stats.min_slant_range_ft > 0
       ? `${Math.round(stats.min_slant_range_ft).toLocaleString()} ft`
       : '-- ft';
   }
-  if (elMaxRisk) elMaxRisk.textContent = `${stats.max_risk_score || 0} / 100`;
+
+  // Peak Exposure Score: Dynamic green -> yellow -> orange -> red
+  if (elMaxRisk) {
+    const score = Number(stats.max_risk_score || 0);
+    elMaxRisk.textContent = `${score} / 100`;
+    const elRiskDesc = document.getElementById('stat-peak-risk-desc');
+    const elRiskCard = elMaxRisk.closest('.stat-card');
+
+    if (score === 0) {
+      elMaxRisk.style.color = '#10b981';
+      if (elRiskDesc) elRiskDesc.innerHTML = `<span style="color: #10b981; font-weight: 600;">Clean / None</span> &bull; No lead detected`;
+      if (elRiskCard) elRiskCard.style.borderColor = 'rgba(16, 185, 129, 0.25)';
+    } else if (score < 40) {
+      elMaxRisk.style.color = '#facc15';
+      if (elRiskDesc) elRiskDesc.innerHTML = `<span style="color: #facc15; font-weight: 600;">Low / Moderate</span> &bull; Upwind or high pass`;
+      if (elRiskCard) elRiskCard.style.borderColor = 'rgba(250, 204, 21, 0.3)';
+    } else if (score < 70) {
+      elMaxRisk.style.color = '#f97316';
+      if (elRiskDesc) elRiskDesc.innerHTML = `<span style="color: #f97316; font-weight: 600;">Elevated</span> &bull; Downwind or close pass`;
+      if (elRiskCard) elRiskCard.style.borderColor = 'rgba(249, 115, 22, 0.35)';
+    } else {
+      elMaxRisk.style.color = '#ef4444';
+      if (elRiskDesc) elRiskDesc.innerHTML = `<span style="color: #ef4444; font-weight: 600;">Critical / Direct Plume</span> &bull; Overhead departure`;
+      if (elRiskCard) elRiskCard.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+    }
+  }
 
   // 2. Update Exposure Timeline Chart
   if (exposureChart && stats.timeline) {
@@ -213,8 +298,38 @@ function resizeCharts() {
   if (fleetChart) fleetChart.resize();
 }
 
+// Modal dialog controllers for Peak Exposure Information
+function openExposureInfoModal() {
+  const dlg = document.getElementById('exposure-info-dialog');
+  if (dlg && typeof dlg.showModal === 'function') {
+    dlg.showModal();
+  }
+}
+
+function closeExposureInfoModal() {
+  const dlg = document.getElementById('exposure-info-dialog');
+  if (dlg && typeof dlg.close === 'function') {
+    dlg.close();
+  }
+}
+
+// Close dialog when clicking outside modal on backdrop
+document.addEventListener('DOMContentLoaded', () => {
+  const dlg = document.getElementById('exposure-info-dialog');
+  if (dlg) {
+    dlg.addEventListener('click', (e) => {
+      const rect = dlg.getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+        dlg.close();
+      }
+    });
+  }
+});
+
 // Bind globally for HTML event attributes
 window.changeAnalyticsTimeRange = changeAnalyticsTimeRange;
 window.fetchAndRenderAnalytics = fetchAndRenderAnalytics;
 window.resizeCharts = resizeCharts;
+window.openExposureInfoModal = openExposureInfoModal;
+window.closeExposureInfoModal = closeExposureInfoModal;
 
