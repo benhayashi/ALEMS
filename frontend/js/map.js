@@ -148,7 +148,7 @@ function drawHomeMarker(homeConfig) {
   });
 }
 
-function setHomeLocation(lat, lon) {
+function setHomeLocation(lat, lon, panMap = false) {
   const roundedLat = parseFloat(lat.toFixed(6));
   const roundedLon = parseFloat(lon.toFixed(6));
 
@@ -163,6 +163,13 @@ function setHomeLocation(lat, lon) {
     drawHomeMarker({ lat: roundedLat, lon: roundedLon });
   }
   drawProximityRings(roundedLat, roundedLon);
+
+  if (panMap && map) {
+    map.setView([roundedLat, roundedLon], Math.max(map.getZoom(), 17));
+    if (homeMarker) {
+      setTimeout(() => homeMarker.openPopup(), 200);
+    }
+  }
 
   // Auto-save via API so the user doesn't even need to click save
   fetch('/api/config', {

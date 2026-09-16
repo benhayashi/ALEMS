@@ -39,7 +39,38 @@ class GeocodingService:
 
         clean_addr = address.strip()
 
-        # Tier 1: US Census Bureau Geocoder (Best for US street addresses)
+        # Tier 1: ArcGIS World Geocoding Service (Free public endpoint, high-accuracy PointAddress/rooftop)
+        try:
+            arc_url = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates"
+            arc_params = {
+                "SingleLine": clean_addr,
+                "f": "json",
+                "maxLocations": 1,
+                "outFields": "Match_addr,Addr_type,Score,X,Y,DisplayX,DisplayY"
+            }
+            resp = self.session.get(arc_url, params=arc_params, timeout=4.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if candidates and candidates[0].get("score", 0) >= 80:
+                    first = candidates[0]
+                    attrs = first.get("attributes", {})
+                    # Prefer display coords, fallback to location
+                    lat = float(attrs.get("DisplayY") or first.get("location", {}).get("y", 0.0))
+                    lon = float(attrs.get("DisplayX") or first.get("location", {}).get("x", 0.0))
+                    matched = attrs.get("Match_addr") or first.get("address", clean_addr)
+                    addr_type = attrs.get("Addr_type", "PointAddress")
+                    if lat and lon:
+                        return {
+                            "address": matched,
+                            "lat": round(lat, 6),
+                            "lon": round(lon, 6),
+                            "source": f"ArcGIS World Geocoder ({addr_type})"
+                        }
+        except Exception as e:
+            print(f"ArcGIS geocoding attempt failed: {e}")
+
+        # Tier 2: US Census Bureau Geocoder (Best for official US street addresses)
         try:
             census_url = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
             params = {
@@ -66,7 +97,7 @@ class GeocodingService:
         except Exception as e:
             print(f"US Census geocoding attempt failed: {e}")
 
-        # Tier 2: OpenStreetMap Nominatim with query relaxation
+        # Tier 3: OpenStreetMap Nominatim with query relaxation
         queries_to_try = [
             clean_addr,
             # If address has comma, try without middle elements or just street + zip

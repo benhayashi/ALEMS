@@ -622,15 +622,15 @@ function setupSettingsHandlers() {
             document.getElementById('setting-home-address').value = data.address;
           }
           if (typeof setHomeLocation === 'function') {
-            setHomeLocation(data.lat, data.lon);
+            setHomeLocation(data.lat, data.lon, true);
           }
           if (geocodeMsg) {
             geocodeMsg.style.display = 'block';
             geocodeMsg.style.background = 'rgba(16, 185, 129, 0.15)';
             geocodeMsg.style.color = '#6ee7b7';
-            geocodeMsg.textContent = `✓ Located (${data.source}): Lat ${data.lat}, Lon ${data.lon}`;
+            geocodeMsg.innerHTML = `✓ Located (${data.source}): Lat ${data.lat}, Lon ${data.lon}<br/><span style="font-size:0.78rem; color:#a7f3d0;">Pin placed on map. Drag pin directly onto your house rooftop to fine-tune anytime.</span>`;
           }
-          showToast(`📍 Found: ${data.lat}, ${data.lon}`);
+          showToast(`📍 Located: ${data.lat}, ${data.lon}`);
         } else {
           if (geocodeMsg) {
             geocodeMsg.style.display = 'block';
