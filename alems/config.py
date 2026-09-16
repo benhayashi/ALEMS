@@ -3,7 +3,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).resolve().parent.parent
