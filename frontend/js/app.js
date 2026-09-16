@@ -125,6 +125,7 @@ async function loadConfigAndInit() {
     // Load initial events and stats
     await refreshEvents();
     await refreshStats();
+    await fetchLiveAircraftHttp();
   } catch (e) {
     console.error("Failed to load initial config:", e);
   }
@@ -680,7 +681,7 @@ function setupSettingsHandlers() {
             geocodeMsg.style.display = 'block';
             geocodeMsg.style.background = 'rgba(239, 68, 68, 0.15)';
             geocodeMsg.style.color = '#fca5a5';
-            geocodeMsg.textContent = `Could not resolve "${addr}". Try street + ZIP (e.g. "44081 Beaver Creek Dr, 20619") or click "Drop Pin on Map".`;
+            geocodeMsg.textContent = `Could not resolve "${addr}". Try street + ZIP (e.g. "123 Main St, 20650") or click "Drop Pin on Map".`;
           }
         }
       } catch (err) {
@@ -774,6 +775,29 @@ function setupSettingsHandlers() {
       updateAdsbPanels(e.target.value);
     });
   }
+
+  // 4c. Keep Host/Port/Path in sync with direct URL
+  const inputHost = document.getElementById('setting-readsb-host');
+  const inputPort = document.getElementById('setting-readsb-port');
+  const inputPath = document.getElementById('setting-readsb-path');
+  const inputUrl = document.getElementById('setting-readsb-url');
+
+  function syncReadsbUrlFromInputs() {
+    const h = inputHost ? inputHost.value.trim() : '';
+    if (!h) return;
+    const p = inputPort ? inputPort.value.trim() : '';
+    const path = (inputPath && inputPath.value.trim()) ? inputPath.value.trim() : '/data/aircraft.pb';
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    const cleanHost = (h.startsWith('http://') || h.startsWith('https://')) ? h : `http://${h}`;
+    const portPart = (p && p !== '80' && p !== '443') ? `:${p}` : '';
+    if (inputUrl) {
+      inputUrl.value = `${cleanHost}${portPart}${cleanPath}`;
+    }
+  }
+
+  if (inputHost) inputHost.addEventListener('input', syncReadsbUrlFromInputs);
+  if (inputPort) inputPort.addEventListener('input', syncReadsbUrlFromInputs);
+  if (inputPath) inputPath.addEventListener('input', syncReadsbUrlFromInputs);
 
   // 5. Test ADS-B Connection Button
   const testAdsbBtn = document.getElementById('test-readsb-btn');

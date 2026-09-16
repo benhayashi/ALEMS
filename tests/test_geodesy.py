@@ -12,7 +12,7 @@ from alems.geodesy import (
 
 def test_distance_and_bearing():
     # 2W6 coordinates: 38.3154, -76.5501
-    # 44081 Beaver Creek Dr: 38.2720, -76.4950
+    # Monitored Location: 38.2720, -76.4950
     dist_m = haversine_distance_m(38.3154, -76.5501, 38.2720, -76.4950)
     dist_nmi = distance_nm(38.3154, -76.5501, 38.2720, -76.4950)
     dist_feet = distance_ft(38.3154, -76.5501, 38.2720, -76.4950)

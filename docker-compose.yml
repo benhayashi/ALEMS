@@ -14,12 +14,14 @@ services:
       - ALEMS_HOST=0.0.0.0
       - ALEMS_PORT=8085
       # Optional initial overrides (settings can also be changed anytime in the Web GUI):
-      # - HOME_ADDRESS=44081 Beaver Creek Dr, California, MD 20619
-      # - HOME_LAT=38.2720
-      # - HOME_LON=-76.4950
-      # - READSB_URL=http://192.168.1.100/tar1090/data/aircraft.json
+      # - HOME_ADDRESS=St. Mary's County, MD
+      # - HOME_LAT=38.3000
+      # - HOME_LON=-76.6000
+      # - READSB_URL=http://192.168.1.216:8081/data/aircraft.pb
       # - HASS_URL=http://homeassistant.local:8123
       # - HASS_TOKEN=your_token_here
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./data:/app/data
       - ./exports:/app/exports

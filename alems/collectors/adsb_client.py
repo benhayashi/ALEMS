@@ -128,18 +128,36 @@ class ADSBClient:
     """Client for reading live ADS-B telemetry from local receivers (readsb) or public community APIs."""
 
     def __init__(self, endpoint_url: Optional[str] = None, provider: Optional[str] = None):
-        self.provider = provider or config.ADSB_PROVIDER
-        raw_url = endpoint_url or (config.ADSB_CUSTOM_URL if self.provider == "custom_url" else config.READSB_URL)
-        self.endpoint_url = normalize_readsb_url(raw_url) if self.provider == "readsb_local" else raw_url
+        self._provider = provider
+        self._endpoint_url = endpoint_url
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "ALEMS-Lead-Monitor/1.0 (https://github.com/benhayashi/ALEMS)"})
         self.last_fetch_time: float = 0.0
         self.is_connected: bool = False
         self.last_error: Optional[str] = None
 
+    @property
+    def provider(self) -> str:
+        return self._provider or config.ADSB_PROVIDER
+
+    @provider.setter
+    def provider(self, val: str):
+        self._provider = val
+
+    @property
+    def endpoint_url(self) -> str:
+        if self._endpoint_url:
+            return normalize_readsb_url(self._endpoint_url) if self.provider == "readsb_local" else self._endpoint_url
+        raw_url = config.ADSB_CUSTOM_URL if self.provider == "custom_url" else config.READSB_URL
+        return normalize_readsb_url(raw_url) if self.provider == "readsb_local" else raw_url
+
+    @endpoint_url.setter
+    def endpoint_url(self, val: Optional[str]):
+        self._endpoint_url = val
+
     def fetch_raw_aircraft(self) -> List[Dict[str, Any]]:
         """Fetch latest aircraft data from configured provider."""
-        provider = config.ADSB_PROVIDER
+        provider = self.provider
 
         if provider == "adsb_lol":
             return self._fetch_adsb_lol()
@@ -152,40 +170,60 @@ class ADSBClient:
 
     def _fetch_readsb_local(self) -> List[Dict[str, Any]]:
         """Fetch from local readsb/tar1090 service (Protobuf or JSON)."""
-        try:
-            if not self.endpoint_url:
-                self.endpoint_url = normalize_readsb_url(config.READSB_URL)
+        target_url = self.endpoint_url
+        if not target_url:
+            self.is_connected = False
+            self.last_error = "No readsb endpoint URL configured"
+            return []
 
-            if self.endpoint_url.startswith("file://") or self.endpoint_url.startswith("/"):
-                path = self.endpoint_url.replace("file://", "")
+        if target_url.startswith("file://") or target_url.startswith("/"):
+            path = target_url.replace("file://", "")
+            try:
                 import json
                 with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                self.is_connected = True
+                self.last_error = None
+                self.last_fetch_time = time.time()
                 return data.get("aircraft", [])
+            except Exception as e:
+                self.is_connected = False
+                self.last_error = str(e)
+                return []
 
-            resp = self.session.get(self.endpoint_url, timeout=3.0)
+        try:
+            resp = self.session.get(target_url, timeout=3.0)
 
-            # If 404, try automatic fallback between .pb and .json
+            # If 404, try automatic fallback across all standard readsb / tar1090 paths
             if resp.status_code == 404:
-                fallback_url = None
-                if "/tar1090/data/aircraft.json" in self.endpoint_url:
-                    fallback_url = self.endpoint_url.replace("/tar1090/data/aircraft.json", "/data/aircraft.pb")
-                elif "/data/aircraft.json" in self.endpoint_url:
-                    fallback_url = self.endpoint_url.replace("/data/aircraft.json", "/data/aircraft.pb")
-                elif "/data/aircraft.pb" in self.endpoint_url:
-                    fallback_url = self.endpoint_url.replace("/data/aircraft.pb", "/tar1090/data/aircraft.json")
-
-                if fallback_url:
-                    resp = self.session.get(fallback_url, timeout=3.0)
-                    if resp.status_code == 200:
-                        self.endpoint_url = fallback_url
-                        config.save_persisted({"READSB_URL": fallback_url})
+                parsed = urllib.parse.urlparse(target_url)
+                base = f"{parsed.scheme}://{parsed.netloc}"
+                candidates = [
+                    f"{base}/data/aircraft.pb",
+                    f"{base}/data/aircraft.json",
+                    f"{base}/tar1090/data/aircraft.json",
+                    f"{base}/aircraft.json",
+                    f"{base}/dump1090-fa/data/aircraft.json"
+                ]
+                for fb_url in candidates:
+                    if fb_url == target_url:
+                        continue
+                    try:
+                        fb_resp = self.session.get(fb_url, timeout=2.0)
+                        if fb_resp.status_code == 200:
+                            resp = fb_resp
+                            target_url = fb_url
+                            self._endpoint_url = fb_url
+                            config.save_persisted({"READSB_URL": fb_url})
+                            break
+                    except Exception:
+                        continue
 
             resp.raise_for_status()
 
             # Check if Protobuf or JSON
             content_type = resp.headers.get("Content-Type", "")
-            if "protobuf" in content_type or self.endpoint_url.endswith(".pb") or (resp.content and resp.content[:2] in (b'\x08\x01', b'\x08\x00', b'\x08\x02')):
+            if "protobuf" in content_type or target_url.endswith(".pb") or (resp.content and resp.content[:2] in (b'\x08\x01', b'\x08\x00', b'\x08\x02')):
                 aircraft_list = decode_readsb_protobuf(resp.content)
             else:
                 data = resp.json()

@@ -1,5 +1,5 @@
 """Realistic 2W6 traffic pattern flight and weather simulator for ALEMS.
-Simulates piston aircraft (C172, PA28, BE58) flying 2W6 Runway 11/29 patterns over Beaver Creek Dr,
+Simulates piston aircraft (C172, PA28, BE58) flying 2W6 Runway 11/29 patterns,
 alongside unleaded turbine controls (PC-12).
 """
 
@@ -69,7 +69,7 @@ class MockFlightSimulator:
         now_ts = time.time()
         active_aircraft: List[Dict[str, Any]] = []
 
-        # 1. C172 flying standard pattern (elliptical orbit traversing near Beaver Creek Dr)
+        # 1. C172 flying standard pattern (elliptical orbit traversing near monitored property)
         f1 = self.flights[0]
         f1["angle_deg"] = (f1["angle_deg"] + f1["delta_angle"]) % 360.0
         rad = math.radians(f1["angle_deg"])
@@ -99,7 +99,7 @@ class MockFlightSimulator:
             "rssi": -14.2
         })
 
-        # 2. PA-28 climbing out from Runway 11 right past Beaver Creek Dr
+        # 2. PA-28 climbing out from Runway 11 past monitored location
         f2 = self.flights[1]
         dt_hrs = 1.0 / 3600.0
         dist_nm = f2["speed_kts"] * dt_hrs

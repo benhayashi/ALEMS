@@ -181,10 +181,11 @@ async def update_config(req: ConfigUpdateRequest):
     if req.readsb_path is not None:
         updates["READSB_PATH"] = req.readsb_path
 
-    if req.readsb_url is not None:
-        updates["READSB_URL"] = req.readsb_url
-        adsb_client.endpoint_url = req.readsb_url
-    elif req.readsb_host:
+    if req.readsb_url is not None and req.readsb_url.strip():
+        norm_url = normalize_readsb_url(req.readsb_url)
+        updates["READSB_URL"] = norm_url
+        adsb_client.endpoint_url = norm_url
+    elif req.readsb_host and req.readsb_host.strip():
         host = req.readsb_host.strip()
         port = req.readsb_port or 80
         path = req.readsb_path or "/tar1090/data/aircraft.json"
@@ -192,9 +193,15 @@ async def update_config(req: ConfigUpdateRequest):
             host = f"http://{host}"
         p = f":{port}" if port and port not in (80, 443) else ""
         clean_path = path if path and path.startswith("/") else f"/{path}"
-        constructed_url = f"{host}{p}{clean_path}"
+        constructed_url = normalize_readsb_url(f"{host}{p}{clean_path}")
         updates["READSB_URL"] = constructed_url
         adsb_client.endpoint_url = constructed_url
+
+    # Proactively test connection with new settings
+    try:
+        adsb_client.fetch_raw_aircraft()
+    except Exception:
+        pass
 
     if req.weather_provider is not None:
         updates["WEATHER_PROVIDER"] = req.weather_provider

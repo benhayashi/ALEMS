@@ -12,6 +12,7 @@ let baseLayers = {};
 let layerControl = null;
 let aircraftMarkers = {};
 let aircraftTracks = {};
+let aircraftVectors = {};
 let plumePolygons = {};
 let homeMarker = null;
 let runwayLine = null;
@@ -32,8 +33,8 @@ function initMap(homeConfig, airportConfig) {
     return;
   }
 
-  const homeLat = (homeConfig && homeConfig.lat) ? homeConfig.lat : 38.2720;
-  const homeLon = (homeConfig && homeConfig.lon) ? homeConfig.lon : -76.4950;
+  const homeLat = (homeConfig && homeConfig.lat) ? homeConfig.lat : 38.3000;
+  const homeLon = (homeConfig && homeConfig.lon) ? homeConfig.lon : -76.6000;
 
   map = L.map('map', {
     center: [homeLat, homeLon],
@@ -93,8 +94,8 @@ function initMap(homeConfig, airportConfig) {
 function recenterAndRedraw(homeConfig, airportConfig) {
   if (!map) return;
 
-  const homeLat = (homeConfig && homeConfig.lat) ? homeConfig.lat : 38.2720;
-  const homeLon = (homeConfig && homeConfig.lon) ? homeConfig.lon : -76.4950;
+  const homeLat = (homeConfig && homeConfig.lat) ? homeConfig.lat : 38.3000;
+  const homeLon = (homeConfig && homeConfig.lon) ? homeConfig.lon : -76.6000;
 
   drawHomeMarker(homeConfig);
   drawProximityRings(homeLat, homeLon);
@@ -104,10 +105,10 @@ function recenterAndRedraw(homeConfig, airportConfig) {
 
 function drawHomeMarker(homeConfig) {
   if (!map) return;
-  const homeLat = (homeConfig && homeConfig.lat) ? homeConfig.lat : 38.2720;
-  const homeLon = (homeConfig && homeConfig.lon) ? homeConfig.lon : -76.4950;
+  const homeLat = (homeConfig && homeConfig.lat) ? homeConfig.lat : 38.3000;
+  const homeLon = (homeConfig && homeConfig.lon) ? homeConfig.lon : -76.6000;
   const addr = (homeConfig && homeConfig.address) ? homeConfig.address : "Monitored Property";
-  const elev = (homeConfig && homeConfig.elev_msl_ft) ? homeConfig.elev_msl_ft : 110.0;
+  const elev = (homeConfig && homeConfig.elev_msl_ft) ? homeConfig.elev_msl_ft : 100.0;
 
   const houseIcon = L.divIcon({
     className: 'property-marker-container',
@@ -331,8 +332,8 @@ function updateAircraftMarkers(aircraftList, weather) {
     const color = isLeaded ? '#ef4444' : '#3b82f6';
 
     const iconHtml = `
-      <div class="aircraft-marker-icon" style="transform: rotate(${track}deg);">
-        <svg width="28" height="28" viewBox="0 0 24 24" class="svg-plane">
+      <div class="aircraft-marker-icon" style="transform: rotate(${track}deg); transform-origin: 14px 14px; width: 28px; height: 28px;">
+        <svg width="28" height="28" viewBox="0 0 24 24" class="svg-plane" style="transform-origin: 14px 14px;">
           <path fill="${color}" stroke="#ffffff" stroke-width="1.2" d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
         </svg>
       </div>
@@ -348,16 +349,16 @@ function updateAircraftMarkers(aircraftList, weather) {
     const popupHtml = `
       <div style="font-family: sans-serif; min-width: 220px; font-size: 0.82rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 6px;">
-          <strong style="font-size: 1.05rem; color: ${color};">${ac.flight || ac.aircraft_meta.tail_number || hex}</strong>
+          <strong style="font-size: 1.05rem; color: ${color};">${ac.flight || (ac.aircraft_meta && ac.aircraft_meta.tail_number) || hex}</strong>
           <span style="font-size: 0.72rem; background: ${isLeaded ? 'rgba(239,68,68,0.2)' : 'rgba(59,130,246,0.2)'}; color: ${color}; padding: 2px 6px; border-radius: 4px; font-weight: bold;">
-            ${ac.aircraft_meta.fuel_type}
+            ${(ac.aircraft_meta && ac.aircraft_meta.fuel_type) || 'AVGAS'}
           </span>
         </div>
-        <div><strong>Type:</strong> ${ac.aircraft_meta.icao_type} (${ac.aircraft_meta.model_name})</div>
-        <div><strong>Engine:</strong> ${ac.aircraft_meta.engine_type}</div>
-        <div><strong>Slant Range to House:</strong> ${ac.slant_range_ft ? Math.round(ac.slant_range_ft).toLocaleString() : '--'} ft (${ac.dist_nm} NM)</div>
-        <div><strong>Altitude:</strong> ${ac.alt_msl_ft} ft MSL (${ac.alt_agl_ft} ft AGL)</div>
-        <div><strong>Speed:</strong> ${ac.gs} kts | Track: ${ac.track}°</div>
+        <div><strong>Type:</strong> ${(ac.aircraft_meta && ac.aircraft_meta.icao_type) || '--'} (${(ac.aircraft_meta && ac.aircraft_meta.model_name) || '--'})</div>
+        <div><strong>Engine:</strong> ${(ac.aircraft_meta && ac.aircraft_meta.engine_type) || '--'}</div>
+        <div><strong>Slant Range to House:</strong> ${ac.slant_range_ft ? Math.round(ac.slant_range_ft).toLocaleString() : '--'} ft (${ac.dist_nm || '--'} NM)</div>
+        <div><strong>Altitude:</strong> ${ac.alt_msl_ft || ac.alt_baro || '--'} ft MSL (${ac.alt_agl_ft || '--'} ft AGL)</div>
+        <div><strong>Speed:</strong> ${ac.gs || ac.speed || 0} kts | Track: ${ac.track || 0}°</div>
         <hr style="border: 0; border-top: 1px solid #444; margin: 6px 0;"/>
         <div><strong>Lead Emission:</strong> ${ac.dispersion ? ac.dispersion.lead_emission_rate_mg_s : 0} mg/sec</div>
         <div><strong>Downwind:</strong> <span style="color: ${isDownwind ? '#f59e0b' : '#10b981'}; font-weight: bold;">${isDownwind ? 'YES (In Plume)' : 'NO'}</span></div>
@@ -380,7 +381,33 @@ function updateAircraftMarkers(aircraftList, weather) {
     }
     aircraftMarkers[hex].bindPopup(popupHtml);
 
-    updatePlumeCone(hex, lat, lon, effectiveWindDir, isLeaded, isDownwind);
+    // Forward Velocity Vector (Aviation Leader Line along ground track)
+    const gs = Number(ac.gs || ac.speed || 0);
+    if (gs > 15 && track !== undefined && track !== null) {
+      const vectorDistM = Math.max(350, Math.min(2500, gs * 22.0));
+      const trkRad = (track * Math.PI) / 180.0;
+      const vDLat = (vectorDistM * Math.cos(trkRad)) / 111139.0;
+      const vDLon = (vectorDistM * Math.sin(trkRad)) / (111139.0 * Math.cos((lat * Math.PI) / 180.0));
+      const vectorEnd = [lat + vDLat, lon + vDLon];
+
+      if (!aircraftVectors[hex]) {
+        aircraftVectors[hex] = L.polyline([[lat, lon], vectorEnd], {
+          color: color,
+          weight: 2,
+          opacity: 0.85,
+          dashArray: '3, 4'
+        }).addTo(map);
+      } else {
+        aircraftVectors[hex].setLatLngs([[lat, lon], vectorEnd]);
+        aircraftVectors[hex].setStyle({ color: color });
+      }
+    } else if (aircraftVectors[hex]) {
+      map.removeLayer(aircraftVectors[hex]);
+      delete aircraftVectors[hex];
+    }
+
+    // Atmospheric dispersion plume cone (restricted to active geofence vicinity)
+    updatePlumeCone(hex, lat, lon, effectiveWindDir, isLeaded, isDownwind, ac.in_geofence);
   });
 
   // Remove aircraft that left coverage
@@ -394,6 +421,11 @@ function updateAircraftMarkers(aircraftList, weather) {
         delete aircraftTracks[hex];
       }
 
+      if (aircraftVectors[hex]) {
+        map.removeLayer(aircraftVectors[hex]);
+        delete aircraftVectors[hex];
+      }
+
       if (plumePolygons[hex]) {
         map.removeLayer(plumePolygons[hex]);
         delete plumePolygons[hex];
@@ -402,8 +434,9 @@ function updateAircraftMarkers(aircraftList, weather) {
   });
 }
 
-function updatePlumeCone(hex, acLat, acLon, windDirDeg, isLeaded, isDownwind) {
-  if (!isLeaded) {
+function updatePlumeCone(hex, acLat, acLon, windDirDeg, isLeaded, isDownwind, inGeofence) {
+  // Only render exhaust dispersion cones for leaded aircraft within the monitored geofence
+  if (!isLeaded || !inGeofence) {
     if (plumePolygons[hex]) {
       map.removeLayer(plumePolygons[hex]);
       delete plumePolygons[hex];
@@ -412,8 +445,8 @@ function updatePlumeCone(hex, acLat, acLon, windDirDeg, isLeaded, isDownwind) {
   }
 
   const plumeHeading = (windDirDeg + 180.0) % 360.0;
-  const coneLengthMeters = 2500.0;
-  const halfAngle = 25.0;
+  const coneLengthMeters = 1600.0;
+  const halfAngle = 22.0;
 
   const leftAngle = (plumeHeading - halfAngle + 360.0) % 360.0;
   const rightAngle = (plumeHeading + halfAngle) % 360.0;
@@ -426,12 +459,12 @@ function updatePlumeCone(hex, acLat, acLon, windDirDeg, isLeaded, isDownwind) {
   }
 
   const pLeft = getOffsetPoint(acLat, acLon, coneLengthMeters, leftAngle);
-  const pCenter = getOffsetPoint(acLat, acLon, coneLengthMeters * 1.1, plumeHeading);
+  const pCenter = getOffsetPoint(acLat, acLon, coneLengthMeters * 1.08, plumeHeading);
   const pRight = getOffsetPoint(acLat, acLon, coneLengthMeters, rightAngle);
 
   const polygonPoints = [[acLat, acLon], pLeft, pCenter, pRight];
   const plumeColor = isDownwind ? '#ef4444' : '#f59e0b';
-  const fillOpacity = isDownwind ? 0.28 : 0.12;
+  const fillOpacity = isDownwind ? 0.22 : 0.10;
 
   if (!plumePolygons[hex]) {
     plumePolygons[hex] = L.polygon(polygonPoints, {

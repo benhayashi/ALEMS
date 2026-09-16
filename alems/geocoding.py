@@ -104,9 +104,9 @@ class GeocodingService:
         ]
         parts = [p.strip() for p in clean_addr.split(",") if p.strip()]
         if len(parts) >= 3:
-            # e.g. "44081 Beaver Creek Dr, MD 20619"
+            # e.g. "123 Main St, MD 20650"
             queries_to_try.append(f"{parts[0]}, {parts[-1]}")
-            # e.g. "44081 Beaver Creek Dr"
+            # e.g. "123 Main St"
             queries_to_try.append(parts[0])
 
         for q in queries_to_try:

@@ -13,10 +13,10 @@ CONFIG_FILE = DATA_DIR / "config.json"
 
 class Settings(BaseModel):
     # Monitored Property: Address, Lat/Lon, Elevation
-    HOME_ADDRESS: str = os.getenv("HOME_ADDRESS", "44081 Beaver Creek Dr, California, MD 20619")
-    HOME_LAT: float = float(os.getenv("HOME_LAT", "38.27200"))
-    HOME_LON: float = float(os.getenv("HOME_LON", "-76.49500"))
-    HOME_ELEV_MSL_FT: float = float(os.getenv("HOME_ELEV_FT", "110.0"))
+    HOME_ADDRESS: str = os.getenv("HOME_ADDRESS", "St. Mary's County, MD")
+    HOME_LAT: float = float(os.getenv("HOME_LAT", "38.30000"))
+    HOME_LON: float = float(os.getenv("HOME_LON", "-76.60000"))
+    HOME_ELEV_MSL_FT: float = float(os.getenv("HOME_ELEV_FT", "100.0"))
 
     # Nearby Airfield: Identifier, Coordinates, Runways
     AIRPORT_ID: str = os.getenv("AIRPORT_ID", "2W6")
@@ -116,6 +116,7 @@ class Settings(BaseModel):
             "AIRPORT_ID", "AIRPORT_NAME", "AIRPORT_LAT", "AIRPORT_LON", "AIRPORT_ELEV_MSL_FT",
             "AIRPORT_RUNWAY_HEADING_11", "AIRPORT_RUNWAY_HEADING_29", "AIRPORT_RUNWAY_LENGTH_FT",
             "ACTIVE_MONITOR_RADIUS_NM", "FLYOVER_EVENT_RADIUS_NM", "MAX_TRACK_AGE_SECONDS",
+            "ADSB_PROVIDER", "ADSB_CUSTOM_URL",
             "READSB_URL", "READSB_HOST", "READSB_PORT", "READSB_PATH", "READSB_POLL_INTERVAL_SEC",
             "WEATHER_PROVIDER", "ECOWITT_IP", "ECOWITT_PORT",
             "HASS_URL", "HASS_TOKEN", "HASS_WIND_SPEED_ENTITY", "HASS_WIND_DIR_ENTITY", "HASS_WIND_GUST_ENTITY", "HASS_TEMP_ENTITY",

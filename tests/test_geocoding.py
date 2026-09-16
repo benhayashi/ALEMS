@@ -2,7 +2,7 @@ import pytest
 from alems.geocoding import geocoding_service
 
 def test_geocode_census_or_nominatim():
-    res = geocoding_service.geocode_address("44081 Beaver Creek Dr, California, MD 20619")
+    res = geocoding_service.geocode_address("Leonardtown, MD 20650")
     assert res is not None
     assert "lat" in res
     assert "lon" in res

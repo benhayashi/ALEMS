@@ -111,8 +111,8 @@ Settings can be customized anytime directly in the **Settings** tab of the Web G
 
 | Setting | Default Value | Description |
 |---|---|---|
-| Property Address | `44081 Beaver Creek Dr, California, MD 20619` | Street address (or search via Nominatim) |
-| Property Coordinates | `38.2720`, `-76.4950` (110 ft MSL) | Lat/Lon or set by dropping pin on map |
+| Property Address | `St. Mary's County, MD` | Street address (or search via Nominatim) |
+| Property Coordinates | `38.3000`, `-76.6000` (100 ft MSL) | Lat/Lon or set by dropping pin on map |
 | Airfield Code | `2W6` | Airport code (auto-populates coords & runway) |
 | Active Geofence | `3.5 NM` | Aircraft tracking radius |
 | Flyover Event Trigger | `1.5 NM` | Close proximity trigger threshold |

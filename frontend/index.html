@@ -37,7 +37,7 @@
 
     <div class="header-badges">
       <div class="badge badge-lead" id="header-address" onclick="switchTab('tab-settings')" style="cursor: pointer;" title="Click to configure property location">
-        📍 44081 Beaver Creek Dr
+        📍 St. Mary's County, MD
       </div>
       <div class="badge badge-cyan" id="header-airport" onclick="switchTab('tab-settings')" style="cursor: pointer;" title="Click to configure airfield">
         ✈️ 2W6: 3.7 NM (Rwy 11/29)
@@ -293,7 +293,7 @@
         <div class="form-group">
           <label class="form-label">Search Street Address</label>
           <div style="display: flex; gap: 0.5rem;">
-            <input type="text" class="form-input" id="setting-home-address" placeholder="44081 Beaver Creek Dr, California, MD 20619">
+            <input type="text" class="form-input" id="setting-home-address" placeholder="St. Mary's County, MD or 123 Main St, 20650">
             <button class="btn btn-secondary" id="geocode-addr-btn" style="white-space: nowrap;">Find & Geocode</button>
           </div>
           <div class="form-hint">Uses US Census Bureau official geocoder & OpenStreetMap to resolve exact coordinates.</div>
@@ -303,15 +303,15 @@
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem;">
           <div class="form-group">
             <label class="form-label">Latitude</label>
-            <input type="number" step="any" class="form-input" id="setting-home-lat" placeholder="38.272000">
+            <input type="number" step="any" class="form-input" id="setting-home-lat" placeholder="38.300000">
           </div>
           <div class="form-group">
             <label class="form-label">Longitude</label>
-            <input type="number" step="any" class="form-input" id="setting-home-lon" placeholder="-76.495000">
+            <input type="number" step="any" class="form-input" id="setting-home-lon" placeholder="-76.600000">
           </div>
           <div class="form-group">
             <label class="form-label">Ground Elev (ft MSL)</label>
-            <input type="number" step="any" class="form-input" id="setting-home-elev" placeholder="110">
+            <input type="number" step="any" class="form-input" id="setting-home-elev" placeholder="100">
           </div>
         </div>
       </div>
@@ -409,7 +409,7 @@
         <div id="panel-adsb-adsb-lol" style="display: none; margin-top: 0.75rem; padding: 0.75rem; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--border-color);">
           <div style="font-size: 0.85rem; font-weight: 600; color: #38bdf8;">🌐 Public Community ADS-B (adsb.lol)</div>
           <div class="form-hint" style="margin-top: 0.35rem; line-height: 1.5;">
-            Zero SDR receiver required! Automatically streams live aircraft telemetry around your configured property coordinates (<span id="adsb-lol-coords" style="color: #67e8f9;">38.272, -76.495</span>) from community receivers. No API key or signup needed.
+            Zero SDR receiver required! Automatically streams live aircraft telemetry around your configured property coordinates (<span id="adsb-lol-coords" style="color: #67e8f9;">38.300, -76.600</span>) from community receivers. No API key or signup needed.
           </div>
         </div>
 
