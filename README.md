@@ -37,6 +37,36 @@ An open-source, standalone, evidentiary-grade monitoring platform designed to qu
 
 ---
 
+## Visual Overview & Dashboard
+
+### 1. Cumulative 100LL Deposition Heatmap
+Spatial modeling of cumulative lead fallout based on flight paths, low-altitude airfield pattern corridors, and real-time aerodrome wind drift vectors.
+
+![ALEMS 100LL Deposition Heatmap](docs/images/alems-heatmap.png)
+
+---
+
+### 2. Real-Time Aircraft Plume Dispersion & Trajectory
+Active tracking of piston aircraft in the traffic pattern showing dynamic downwind Gaussian dispersion exhaust cones, runway approach vectors, and 3D closest point of approach (CPA) proximity rings.
+
+![ALEMS Aircraft Plumes & Flight Track](docs/images/alems-aircraft-plumes.jpg)
+
+---
+
+### 3. Evidence-Grade Flight Logs & Corroboration Data
+Automated classification of 100LL piston traffic vs unleaded flights, cross-referencing FAA N-number records, 3D slant distance, AGL altitude, local/aerodrome wind vectors, downwind status, and cryptographic SHA-256 hashes for regulatory verification.
+
+![ALEMS Flight Logs](docs/images/alems-flight-logs.png)
+
+---
+
+### 4. Risk Analytics & Fleet Telemetry
+Daily and cumulative flyover frequency trends, peak exposure risk scoring, and fleet fuel type breakdown (100LL Leaded AvGas vs Jet-A / Unleaded).
+
+![ALEMS Risk Analytics](docs/images/alems-risk-analytics.png)
+
+---
+
 ## Standalone Docker Deployment (Raspberry Pi 4 & x86_64)
 
 ALEMS is fully containerized with automated multi-architecture Docker images (`linux/arm64` for Raspberry Pi 4 and `linux/amd64` for PC/servers) published directly to **GitHub Container Registry (GHCR)**.
