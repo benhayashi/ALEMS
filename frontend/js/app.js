@@ -57,6 +57,12 @@ function switchTab(tabId) {
       setTimeout(() => {
         map.invalidateSize();
       }, 300);
+      if (typeof fetchAndDrawExposureHeatmap === 'function') {
+        const active = typeof isHeatmapActive === 'function' ? isHeatmapActive() : (typeof isHeatmapActive !== 'undefined' ? isHeatmapActive : false);
+        if (active) {
+          fetchAndDrawExposureHeatmap();
+        }
+      }
     }
   } else if (tabId === 'tab-analytics') {
     if (typeof initCharts === 'function') {
@@ -435,6 +441,14 @@ function handleNewEvent(eventRecord) {
   if (badge) {
     badge.textContent = `${parseInt(badge.textContent || 0) + 1}`;
     badge.style.display = 'inline-block';
+  }
+
+  // Real-time update to cumulative 100LL heatmap if active on radar map
+  if (typeof fetchAndDrawExposureHeatmap === 'function') {
+    const active = typeof isHeatmapActive === 'function' ? isHeatmapActive() : (typeof isHeatmapActive !== 'undefined' ? isHeatmapActive : false);
+    if (active) {
+      fetchAndDrawExposureHeatmap();
+    }
   }
 }
 

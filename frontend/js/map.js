@@ -841,4 +841,6 @@ async function fetchAndDrawExposureHeatmap() {
 
 window.togglePlumeCones = togglePlumeCones;
 window.setHeatmapCenter = setHeatmapCenter;
+window.fetchAndDrawExposureHeatmap = fetchAndDrawExposureHeatmap;
+window.isHeatmapActive = () => isHeatmapActive;
 
